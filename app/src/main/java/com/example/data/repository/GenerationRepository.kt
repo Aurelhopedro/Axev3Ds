@@ -12,13 +12,15 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.math.max
 
 /**
- * Faz polling silencioso ao GitHub Actions e devolve os ficheiros gerados
- * como se tivessem sido processados localmente.
- *
- * O UI nunca vê referências a "workflow", "Actions" ou "GitHub" —
- * recebe apenas [GenerationStatus] com progresso e ficheiros finais.
+ * Faz polling silencioso ao GitHub Actions e devolve os ficheiros gerados.
+ * O UI recebe [GenerationStatus] com progresso real baseado no run + tempo estimado.
  */
 class GenerationRepository(context: Context) {
 
@@ -33,45 +35,61 @@ class GenerationRepository(context: Context) {
             .create(GitHubApi::class.java)
     }
 
-    // ── Modelo de estado (sem linguagem de workflow) ───────────────────────────
+    // ── Modelo de estado ──────────────────────────────────────────────────────
 
     sealed class GenerationStatus {
-        /** A preparar — fase inicial (0–20 %) */
+        /** Fase inicial — a aguardar o run aparecer no GitHub */
         data class Preparing(val message: String = "Preparing your character…") : GenerationStatus()
-        /** A processar — fase intermédia com % de progresso */
-        data class Processing(val message: String, val progress: Float) : GenerationStatus()
-        /** Concluído — lista de ficheiros prontos */
+
+        /**
+         * A processar — fase intermédia.
+         * @param message      Etapa atual (ex: "Building mesh structure…")
+         * @param progress     0.0–1.0
+         * @param elapsedSec   Segundos decorridos desde o dispatch
+         * @param estimatedSec Estimativa total em segundos (baseada em runs anteriores ou 15 min)
+         */
+        data class Processing(
+            val message: String,
+            val progress: Float,
+            val elapsedSec: Int = 0,
+            val estimatedSec: Int = 900   // default: 15 min
+        ) : GenerationStatus()
+
+        /** Concluído — lista de ficheiros prontos a descarregar */
         data class Ready(val files: List<GeneratedFile>) : GenerationStatus()
-        /** Erro — mensagem amigável sem termos técnicos */
+
+        /** Erro — mensagem amigável */
         data class Failed(val message: String) : GenerationStatus()
     }
 
-    // Mensagens de progresso — sem nenhuma referência a GitHub/workflow
+    // Mapeamento de etapas do run → mensagem + progresso aproximado
+    // Quando o GitHub Actions não devolve a etapa em curso, usamos o tempo decorrido
     private val progressMessages = listOf(
-        0.10f to "Preparing your character…",
+        0.05f to "Preparing your character…",
+        0.15f to "Setting up environment…",
         0.25f to "Building mesh structure…",
         0.40f to "Applying skin & textures…",
         0.55f to "Adding clothing & accessories…",
-        0.70f to "Rigging skeleton…",
-        0.82f to "Baking animations…",
-        0.92f to "Exporting 3D files…",
+        0.68f to "Rigging skeleton…",
+        0.80f to "Baking animations…",
+        0.90f to "Exporting 3D files…",
         0.97f to "Finalising…"
+    )
+
+    // Duração típica por qualidade (segundos) — ajusta-se com o histórico
+    private val estimatedDurationByQuality = mapOf(
+        "low"    to 480,
+        "medium" to 720,
+        "high"   to 960
     )
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /**
-     * Polling contínuo desde o dispatch até os ficheiros estarem prontos.
-     * Emite [GenerationStatus] a cada ciclo para o UI mostrar progresso.
-     *
-     * @param repoFullName  "owner/repo"
-     * @param characterId   ID do personagem (usado para identificar o artifact)
-     * @param dispatchedAt  timestamp (ms) do momento em que o dispatch foi feito
-     */
     fun pollUntilReady(
         repoFullName: String,
         characterId: String,
-        dispatchedAt: Long = System.currentTimeMillis()
+        dispatchedAt: Long = System.currentTimeMillis(),
+        quality: String = "high"
     ): Flow<GenerationStatus> = flow {
 
         val bearer = tokenManager.getBearerToken()
@@ -85,27 +103,41 @@ class GenerationRepository(context: Context) {
 
         emit(GenerationStatus.Preparing())
 
-        var elapsedMs   = 0L
-        var progressIdx = 0
-        val pollInterval = 8_000L   // verificar a cada 8 s
-        val timeout      = 55 * 60 * 1000L  // 55 min (workflow tem timeout de 60)
+        val estimatedTotal = estimatedDurationByQuality[quality] ?: 900
+        val pollInterval   = 8_000L
+        val timeout        = 55 * 60 * 1000L
+        var elapsedMs      = 0L
+        var runStartedAt: Long? = null
 
         while (elapsedMs < timeout) {
 
             delay(pollInterval)
             elapsedMs += pollInterval
 
-            // Progresso visual simulado — avança suavemente
-            val approxProgress = (elapsedMs.toFloat() / 180_000f).coerceIn(0.05f, 0.95f)
+            val elapsedSec = (elapsedMs / 1000).toInt()
+
+            // Progresso baseado no tempo decorrido vs estimativa
+            val approxProgress = (elapsedSec.toFloat() / estimatedTotal.toFloat())
+                .coerceIn(0.05f, 0.95f)
+
             val msgPair = progressMessages.lastOrNull { it.first <= approxProgress }
                 ?: progressMessages.first()
-            emit(GenerationStatus.Processing(msgPair.second, approxProgress))
 
-            // Verificar se o run mais recente terminou
+            // Calcular tempo restante estimado
+            val remainingSec = max(0, estimatedTotal - elapsedSec)
+
+            emit(GenerationStatus.Processing(
+                message      = msgPair.second,
+                progress     = approxProgress,
+                elapsedSec   = elapsedSec,
+                estimatedSec = remainingSec
+            ))
+
+            // Verificar run no GitHub
             val runsResp = try {
                 api.getRunsForWorkflow(bearer, owner, repo,
-                    WorkflowTemplates.WORKFLOW_GENERATE, perPage = 3)
-            } catch (e: Exception) { continue }
+                    WorkflowTemplates.WORKFLOW_GENERATE, perPage = 5)
+            } catch (_: Exception) { continue }
 
             if (!runsResp.isSuccessful) continue
 
@@ -114,9 +146,36 @@ class GenerationRepository(context: Context) {
                 ?.maxByOrNull { it.created_at }
                 ?: continue
 
+            // Registar quando o run realmente começou para melhorar a estimativa
+            if (runStartedAt == null && run.status == "in_progress") {
+                runStartedAt = fromIso(run.created_at) ?: dispatchedAt
+            }
+
+            // Calcular progresso usando tempo real do run, se disponível
+            if (runStartedAt != null) {
+                val runElapsedSec = ((System.currentTimeMillis() - runStartedAt!!) / 1000).toInt()
+                val runProgress = (runElapsedSec.toFloat() / estimatedTotal.toFloat())
+                    .coerceIn(0.05f, 0.95f)
+                val runMsg = progressMessages.lastOrNull { it.first <= runProgress }
+                    ?: progressMessages.first()
+                val runRemaining = max(0, estimatedTotal - runElapsedSec)
+
+                emit(GenerationStatus.Processing(
+                    message      = runMsg.second,
+                    progress     = runProgress,
+                    elapsedSec   = runElapsedSec,
+                    estimatedSec = runRemaining
+                ))
+            }
+
             when {
                 run.status == "completed" && run.conclusion == "success" -> {
-                    emit(GenerationStatus.Processing("Preparing your files…", 0.98f))
+                    emit(GenerationStatus.Processing(
+                        message      = "Preparing your files…",
+                        progress     = 0.98f,
+                        elapsedSec   = elapsedSec,
+                        estimatedSec = 0
+                    ))
                     val files = fetchFiles(bearer, owner, repo, run.id, characterId)
                     if (files.isNotEmpty()) {
                         emit(GenerationStatus.Ready(files))
@@ -130,7 +189,6 @@ class GenerationRepository(context: Context) {
                     ))
                     return@flow
                 }
-                // in_progress / queued — continua a aguardar
             }
         }
 
@@ -152,39 +210,39 @@ class GenerationRepository(context: Context) {
 
             resp.body()?.artifacts
                 ?.filter { it.name.contains(characterId, ignoreCase = true) }
-                ?.flatMap { artifact ->
-                    // Um artifact é um ZIP — apresentamos como ficheiro único
-                    // com o formato principal derivado do nome
+                ?.map { artifact ->
                     val ext = when {
-                        artifact.name.endsWith(".glb", true) -> "glb"
-                        artifact.name.endsWith(".fbx", true) -> "fbx"
-                        artifact.name.endsWith(".obj", true) -> "obj"
-                        artifact.name.contains("glb", true)  -> "glb"
-                        artifact.name.contains("fbx", true)  -> "fbx"
+                        artifact.name.contains("glb", true) -> "glb"
+                        artifact.name.contains("fbx", true) -> "fbx"
+                        artifact.name.contains("obj", true) -> "obj"
                         else -> "zip"
                     }
-                    listOf(
-                        GeneratedFile(
-                            name         = "${characterId}.${ext}",
-                            extension    = ext,
-                            sizeBytes    = artifact.size_in_bytes,
-                            downloadUrl  = artifact.archive_download_url,
-                            artifactId   = artifact.id
-                        )
+                    GeneratedFile(
+                        name        = "${characterId}.${ext}",
+                        extension   = ext,
+                        sizeBytes   = artifact.size_in_bytes,
+                        downloadUrl = artifact.archive_download_url,
+                        artifactId  = artifact.id
                     )
                 } ?: emptyList()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
 
-    // ── Utilitário ────────────────────────────────────────────────────────────
+    // ── Utilitários de data ───────────────────────────────────────────────────
 
     private fun toIso(ms: Long): String {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'",
-            java.util.Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
         }
-        return sdf.format(java.util.Date(ms))
+        return sdf.format(Date(ms))
     }
+
+    private fun fromIso(iso: String): Long? = try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        sdf.parse(iso)?.time
+    } catch (_: Exception) { null }
 }
