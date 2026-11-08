@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.api.GitHubRepo
 import com.example.ui.MainViewModel
 import com.example.ui.RepoCreationState
+import com.example.ui.WorkspaceSetupState
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.TacticalButton
 import com.example.ui.components.TacticalCard
@@ -31,17 +32,13 @@ fun CreateRepositoryScreen(
     onRepositoryCreated: () -> Unit
 ) {
     val creationState by viewModel.repoCreationState.collectAsState()
+    val workspaceState by viewModel.workspaceSetupState.collectAsState()
     val user by viewModel.user.collectAsState()
     val context = LocalContext.current
 
     var repoName by remember { mutableStateOf("axev-3d-workspace") }
     var description by remember { mutableStateOf("Personal AXEV 3D STUDIO workspace for character generation and 3D assets.") }
     var showConfirmDialog by remember { mutableStateOf(false) }
-
-    // Navigate out when creation succeeds and user taps "Continue"
-    LaunchedEffect(creationState) {
-        // handled per-button below
-    }
 
     Column(
         modifier = Modifier
@@ -95,7 +92,7 @@ fun CreateRepositoryScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Visibility — public only for this phase
+                    // Visibility
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Public, contentDescription = null, tint = Color.Green, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -157,11 +154,15 @@ fun CreateRepositoryScreen(
             is RepoCreationState.Success -> {
                 RepoCreatedCard(
                     repo = state.repo,
+                    workspaceState = workspaceState,
                     onOpenGitHub = {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.repo.html_url))
                         context.startActivity(intent)
                     },
                     onRefresh = { viewModel.resetRepoCreationState() },
+                    onSetupWorkspace = {
+                        viewModel.setupWorkspace(state.repo.owner.login, state.repo.name)
+                    },
                     onContinue = {
                         viewModel.selectRepo(state.repo.full_name)
                         onRepositoryCreated()
@@ -213,8 +214,10 @@ fun CreateRepositoryScreen(
 @Composable
 private fun RepoCreatedCard(
     repo: GitHubRepo,
+    workspaceState: WorkspaceSetupState,
     onOpenGitHub: () -> Unit,
     onRefresh: () -> Unit,
+    onSetupWorkspace: () -> Unit,
     onContinue: () -> Unit
 ) {
     Column {
@@ -231,7 +234,6 @@ private fun RepoCreatedCard(
                 Text("Repository Created!", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Repo details
                 RepoInfoRow(label = "Name", value = repo.name)
                 RepoInfoRow(label = "Owner", value = repo.owner.login)
                 RepoInfoRow(label = "Visibility", value = if (repo.private) "Private" else "Public")
@@ -246,7 +248,7 @@ private fun RepoCreatedCard(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action buttons
+        // Open on GitHub
         Button(
             onClick = onOpenGitHub,
             modifier = Modifier.fillMaxWidth(),
@@ -259,6 +261,7 @@ private fun RepoCreatedCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Refresh
         OutlinedButton(
             onClick = onRefresh,
             modifier = Modifier.fillMaxWidth()
@@ -270,6 +273,79 @@ private fun RepoCreatedCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // ── Botão "Criar Ambiente de Trabalho" ────────────────────────────────
+        when (workspaceState) {
+            is WorkspaceSetupState.Idle -> {
+                Button(
+                    onClick = onSetupWorkspace,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A6B3A))
+                ) {
+                    Icon(Icons.Default.Build, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Criar Ambiente de Trabalho")
+                }
+            }
+
+            is WorkspaceSetupState.Setting -> {
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A6B3A))
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("A configurar ambiente...")
+                }
+            }
+
+            is WorkspaceSetupState.Done -> {
+                TacticalCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Green)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Ambiente configurado com sucesso!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Green,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            is WorkspaceSetupState.Failed -> {
+                TacticalCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            workspaceState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onSetupWorkspace,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tentar novamente")
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Continue to Dashboard
         Button(
             onClick = onContinue,
             modifier = Modifier.fillMaxWidth(),
