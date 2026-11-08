@@ -3,33 +3,415 @@ name: AXEV 3D — Gerar Personagem
 on:
   workflow_dispatch:
     inputs:
-      character_id:
-        description: "ID único do personagem (UUID gerado pela app)"
-        required: true
-        type: string
-        default: "character_001"
+
+      # ── IDENTIDADE ────────────────────────────────────────────────────────
       character_name:
-        description: "Nome do personagem"
+        description: "Nome do personagem (texto livre)"
         required: true
         type: string
         default: "AXEV Character"
+
       preset:
-        description: "Categoria / preset do personagem (ex: Soldier, Police Officer...)"
+        description: "Preset base do personagem"
         required: true
-        type: string
-        default: "Soldier"
+        type: choice
+        default: "The Soldier"
+        options:
+          - "Athletic man"
+          - "Athletic woman"
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Yoruba Warrior"
+          - "The Maasai Warrior"
+          - "The Zulu Warrior"
+          - "The Dahomey Warrior"
+          - "The American Sheriff"
+          - "The Police Officer (Nigeria)"
+          - "The FRSC Officer (Nigeria)"
+          - "Detective"
+          - "The Secret Agent"
+          - "The Covert Spy"
+          - "The Professional Hitman"
+          - "The Bodyguard"
+          - "The Gangster"
+          - "The Prison Escapee"
+          - "The Priest"
+          - "The Corporate High-Flier"
+          - "The Female Executive"
+          - "Businesswoman"
+          - "The Arabian Oil Tycoon"
+          - "The Miami Dealer"
+          - "The Adventurer"
+          - "The Cyberpunk Hacker"
+          - "The Wasteland Survivor"
+          - "The Bride"
+          - "The Beach Girl"
+          - "Heavy brute"
+          - "Elder"
+          - "Teen"
+
+      gender:
+        description: "Género"
+        required: true
+        type: choice
+        default: "male"
+        options:
+          - "male"
+          - "female"
+          - "androgynous"
+
+      age:
+        description: "Idade aproximada"
+        required: true
+        type: choice
+        default: "25"
+        options:
+          - "16"
+          - "18"
+          - "20"
+          - "25"
+          - "30"
+          - "35"
+          - "40"
+          - "45"
+          - "50"
+          - "55"
+          - "60"
+          - "65"
+          - "70"
+          - "80"
+          - "90"
+
+      # ── CORPO ────────────────────────────────────────────────────────────
+      muscle:
+        description: "Musculatura"
+        required: true
+        type: choice
+        default: "medium"
+        options:
+          - "none"
+          - "slim"
+          - "medium"
+          - "athletic"
+          - "muscular"
+          - "very muscular"
+
+      weight:
+        description: "Peso corporal"
+        required: true
+        type: choice
+        default: "average"
+        options:
+          - "very slim"
+          - "slim"
+          - "average"
+          - "heavy"
+          - "very heavy"
+
+      height:
+        description: "Altura"
+        required: true
+        type: choice
+        default: "average"
+        options:
+          - "very short"
+          - "short"
+          - "average"
+          - "tall"
+          - "very tall"
+
+      skin_tone:
+        description: "Tom de pele / etnia"
+        required: true
+        type: choice
+        default: "mixed"
+        options:
+          - "very light"
+          - "light"
+          - "mixed"
+          - "dark"
+          - "very dark"
+          - "african"
+          - "asian"
+          - "caucasian"
+
+      # ── CABELO ───────────────────────────────────────────────────────────
+      hair_style:
+        description: "Estilo de cabelo"
+        required: true
+        type: choice
+        default: "short02"
+        options:
+          - "none"
+          - "buzz"
+          - "mohawk"
+          - "short01"
+          - "short02"
+          - "short03"
+          - "short04"
+          - "long01"
+          - "bob01"
+          - "bob02"
+          - "ponytail01"
+          - "braid01"
+          - "afro01"
+          - "cornrows"
+          - "box_braids"
+
+      hair_color:
+        description: "Cor do cabelo"
+        required: true
+        type: choice
+        default: "black"
+        options:
+          - "black"
+          - "dark brown"
+          - "brown"
+          - "blonde"
+          - "red"
+          - "grey"
+          - "white"
+          - "purple"
+          - "blue"
+          - "pink"
+
+      facial_hair:
+        description: "Pelo facial (homens)"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "stubble"
+          - "mustache"
+          - "mustache_stubble"
+          - "goatee"
+          - "short_beard"
+          - "full_beard"
+
+      # ── OLHOS ────────────────────────────────────────────────────────────
+      eyes:
+        description: "Cor dos olhos"
+        required: true
+        type: choice
+        default: "brown"
+        options:
+          - "blackbrown"
+          - "darkbrown"
+          - "brown"
+          - "brownlight"
+          - "green"
+          - "lightblue"
+          - "grey"
+          - "ice"
+
+      # ── ROUPA ────────────────────────────────────────────────────────────
+      outfit:
+        description: "Roupa / outfit completo (sobrepõe top+bottom se escolhido)"
+        required: true
+        type: choice
+        default: "preset_default"
+        options:
+          - "preset_default"
+          - "male_casualsuit01"
+          - "male_casualsuit05"
+          - "male_elegantsuit01"
+          - "male_worksuit01"
+          - "female_casualsuit02"
+          - "female_elegantsuit01"
+          - "female_sportsuit01"
+          - "set_suit_tie"
+          - "set_wedding_gown"
+          - "set_cocktail_dress"
+          - "set_pantsuit"
+          - "set_prison_jumpsuit"
+          - "set_street_tee_jeans"
+          - "set_thobe"
+          - "set_pastel_suit"
+          - "set_clergy"
+          - "none"
+
+      top:
+        description: "Top separado (apenas se outfit = none)"
+        required: true
+        type: choice
+        default: "preset_default"
+        options:
+          - "preset_default"
+          - "none"
+          - "fatigue_shirt"
+          - "uniform_shirt"
+          - "tank_top"
+          - "tunic"
+          - "long_tunic"
+          - "techwear_jacket"
+          - "tattered_shirt"
+          - "sheriff_shirt"
+          - "tank_top"
+
+      bottom:
+        description: "Bottom separado (apenas se outfit = none)"
+        required: true
+        type: choice
+        default: "preset_default"
+        options:
+          - "preset_default"
+          - "none"
+          - "fatigue_pants"
+          - "uniform_trousers"
+          - "cargo_shorts"
+          - "trousers"
+          - "loincloth"
+          - "wrapper_knee"
+          - "hide_aprons"
+          - "techwear_pants"
+          - "tattered_pants"
+          - "sheriff_trousers"
+
+      shoes:
+        description: "Calçado"
+        required: true
+        type: choice
+        default: "preset_default"
+        options:
+          - "preset_default"
+          - "none"
+          - "shoes01"
+          - "shoes02"
+          - "shoes03"
+          - "shoes04"
+          - "shoes06"
+          - "combat_boots"
+          - "oxfords"
+          - "sneakers"
+          - "heels"
+          - "loafers"
+          - "sandals"
+          - "flipflops"
+          - "slides"
+
+      hat:
+        description: "Chapéu / cobertura de cabeça"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "preset_default"
+          - "baseball_cap"
+          - "helmet"
+          - "beret"
+          - "fedora01"
+          - "fedora_cocked"
+          - "cowboy_hat"
+          - "keffiyeh"
+          - "fila_cap"
+
+      # ── ACESSÓRIOS E ARMAS ────────────────────────────────────────────────
+      weapon:
+        description: "Arma na mão direita"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "pistol"
+          - "rifle"
+          - "shotgun"
+          - "smg"
+          - "knife"
+          - "sword"
+          - "axe"
+          - "bat"
+
+      expression:
+        description: "Expressão facial"
+        required: true
+        type: choice
+        default: "neutral"
+        options:
+          - "neutral"
+          - "happy"
+          - "angry"
+          - "determined"
+          - "sad"
+          - "surprised"
+          - "afraid"
+
+      # ── RIG E ANIMAÇÕES ──────────────────────────────────────────────────
+      rig:
+        description: "Tipo de rig (esqueleto)"
+        required: true
+        type: choice
+        default: "game"
+        options:
+          - "game"
+          - "game_lite"
+          - "full"
+          - "none"
+
+      animations:
+        description: "Incluir animações no export"
+        required: true
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
+
+      rest_pose:
+        description: "Pose de descanso do rig"
+        required: true
+        type: choice
+        default: "A"
+        options:
+          - "A"
+          - "T"
+
+      face_shapes:
+        description: "Incluir blend shapes faciais (expressões)"
+        required: true
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
+
+      # ── QUALIDADE E EXPORTAÇÃO ────────────────────────────────────────────
       quality:
-        description: "Nível de qualidade: low | medium | high"
+        description: "Nível de detalhe / qualidade"
         required: true
-        type: string
-        default: "High"
+        type: choice
+        default: "high"
+        options:
+          - "low"
+          - "medium"
+          - "high"
+
       export_formats:
-        description: "Formatos a exportar, separados por vírgula (ex: glb ou glb,fbx,obj,zip)"
+        description: "Formatos a exportar"
+        required: true
+        type: choice
+        default: "glb"
+        options:
+          - "glb"
+          - "fbx"
+          - "obj"
+          - "zip"
+          - "glb,fbx"
+          - "glb,obj"
+          - "glb,fbx,obj"
+          - "glb,fbx,obj,zip"
+
+      # ── IDs PARA COMPATIBILIDADE COM A APP ───────────────────────────────
+      character_id:
+        description: "ID do personagem (gerado pela app, ou deixar o default)"
         required: true
         type: string
-        default: "glb"
+        default: "character_001"
+
       config_json:
-        description: "JSON completo do CharacterConfig enviado pela app Android"
+        description: "JSON do CharacterConfig da app Android (opcional)"
         required: false
         type: string
         default: ""
@@ -43,51 +425,38 @@ concurrency:
 
 jobs:
   generate-character:
-    name: "Gerar personagem e disponibilizar ficheiros"
+    name: "Gerar personagem"
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
-      # ─── 1. VALIDAÇÃO DOS INPUTS ────────────────────────────────────────────
-      - name: Validar inputs recebidos da app
+      # ─── 1. VALIDAÇÃO ────────────────────────────────────────────────────
+      - name: Validar inputs
         env:
           INPUT_FORMATS: ${{ inputs.export_formats }}
           INPUT_QUALITY: ${{ inputs.quality }}
-          INPUT_PRESET:  ${{ inputs.preset }}
           INPUT_ID:      ${{ inputs.character_id }}
-          INPUT_NAME:    ${{ inputs.character_name }}
           INPUT_JSON:    ${{ inputs.config_json }}
         run: |
           set -euo pipefail
 
-          # --- Validar character_id (apenas caracteres seguros) ---
           if ! echo "$INPUT_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
-            echo "::error::character_id inválido: '$INPUT_ID'. Use apenas letras, números, _ ou -."
+            echo "::error::character_id inválido: '$INPUT_ID'"
             exit 1
           fi
 
-          # --- Validar quality ---
-          QUALITY_LOWER=$(echo "$INPUT_QUALITY" | tr '[:upper:]' '[:lower:]')
-          if [[ "$QUALITY_LOWER" != "low" && "$QUALITY_LOWER" != "medium" && "$QUALITY_LOWER" != "high" ]]; then
-            echo "::error::quality inválida: '$INPUT_QUALITY'. Valores aceites: low, medium, high."
-            exit 1
-          fi
-          echo "QUALITY_NORM=$QUALITY_LOWER" >> "$GITHUB_ENV"
-
-          # --- Validar formatos ---
           ALLOWED="glb fbx obj zip"
           IFS=',' read -ra FMTS <<< "$INPUT_FORMATS"
           for fmt in "${FMTS[@]}"; do
             fmt_clean=$(echo "$fmt" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
             if ! echo "$ALLOWED" | grep -qw "$fmt_clean"; then
-              echo "::error::Formato não suportado: '$fmt_clean'. Valores aceites: glb, fbx, obj, zip."
+              echo "::error::Formato não suportado: '$fmt_clean'"
               exit 1
             fi
           done
           FORMATS_NORM=$(echo "$INPUT_FORMATS" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
           echo "FORMATS_NORM=$FORMATS_NORM" >> "$GITHUB_ENV"
 
-          # --- Validar config_json (se fornecido) ---
           if [ -n "$INPUT_JSON" ]; then
             if ! echo "$INPUT_JSON" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
               echo "::error::config_json contém JSON malformado."
@@ -95,44 +464,30 @@ jobs:
             fi
           fi
 
-          echo "✅ Todos os inputs validados."
-          echo "   character_id  : $INPUT_ID"
-          echo "   character_name: $INPUT_NAME"
-          echo "   preset        : $INPUT_PRESET"
-          echo "   quality       : $QUALITY_LOWER"
-          echo "   export_formats: $FORMATS_NORM"
+          echo "✅ Inputs validados. Formatos: $FORMATS_NORM"
 
-      # ─── 2. CHECKOUT DO REPOSITÓRIO AXEV ────────────────────────────────────
-      - name: Checkout do repositório AXEV
+      # ─── 2. CHECKOUT ─────────────────────────────────────────────────────
+      - name: Checkout AXEV
         uses: actions/checkout@v4
 
-      # ─── 3. NODE.JS ─────────────────────────────────────────────────────────
+      # ─── 3. NODE.JS ──────────────────────────────────────────────────────
       - name: Configurar Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # ─── 4. CLONAR ARA 3D GEN ───────────────────────────────────────────────
-      - name: Obter motor Ara 3D Gen
-        run: |
-          git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
-          echo "Motor clonado. Versão do package.json:"
-          node -e "const p=require('./ara-3d-gen/package.json'); console.log(p.name,'v'+p.version)"
+      # ─── 4. CLONAR MOTOR ─────────────────────────────────────────────────
+      - name: Clonar Ara 3D Gen
+        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
 
-      # ─── 5. INSTALAR DEPENDÊNCIAS ────────────────────────────────────────────
-      - name: Instalar dependências (npm ci)
+      # ─── 5. DEPENDÊNCIAS ─────────────────────────────────────────────────
+      - name: Instalar dependências
         working-directory: ara-3d-gen
         run: |
-          if [ -f package-lock.json ]; then
-            echo "package-lock.json encontrado — a usar npm ci"
-            npm ci
-          else
-            echo "Sem package-lock.json — a usar npm install"
-            npm install
-          fi
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      # ─── 6. CACHE DOS ASSETS (vendor/) ──────────────────────────────────────
-      - name: Cache dos assets MakeHuman
+      # ─── 6. CACHE ASSETS ─────────────────────────────────────────────────
+      - name: Cache assets MakeHuman
         id: cache-assets
         uses: actions/cache@v4
         with:
@@ -140,446 +495,301 @@ jobs:
             ara-3d-gen/vendor
             ara-3d-gen/public/assets
           key: ara3d-assets-v1-${{ hashFiles('ara-3d-gen/scripts/setup-assets.ts', 'ara-3d-gen/scripts/mocap-takes.ts') }}
-          restore-keys: |
-            ara3d-assets-v1-
+          restore-keys: ara3d-assets-v1-
 
-      - name: Preparar recursos 3D (setup-assets)
+      - name: Preparar assets 3D
         working-directory: ara-3d-gen
-        if: steps.cache-assets.outputs.cache-hit != 'true'
         run: |
-          echo "A descarregar assets MakeHuman (~280 MB). Pode demorar vários minutos..."
-          npm run setup-assets
-
-      - name: Verificar assets após cache
-        working-directory: ara-3d-gen
-        if: steps.cache-assets.outputs.cache-hit == 'true'
-        run: |
-          echo "Assets restaurados da cache."
-          if [ ! -d "vendor/sys/skins" ]; then
-            echo "Cache incompleta — a regenerar assets..."
+          if [ "${{ steps.cache-assets.outputs.cache-hit }}" != "true" ] || [ ! -d "vendor/sys/skins" ]; then
+            echo "A descarregar assets MakeHuman (~280 MB)..."
             npm run setup-assets
           else
-            echo "✅ Assets verificados: vendor/sys/skins presente."
+            echo "✅ Assets em cache."
           fi
 
-      # ─── 7. CONSTRUIR CONFIGURAÇÃO DO PERSONAGEM ─────────────────────────────
+      # ─── 7. CONSTRUIR PARÂMETROS ──────────────────────────────────────────
       - name: Construir parâmetros do personagem
         env:
-          INPUT_PRESET:   ${{ inputs.preset }}
-          INPUT_NAME:     ${{ inputs.character_name }}
-          INPUT_ID:       ${{ inputs.character_id }}
-          INPUT_JSON:     ${{ inputs.config_json }}
+          INPUT_PRESET:       ${{ inputs.preset }}
+          INPUT_NAME:         ${{ inputs.character_name }}
+          INPUT_GENDER:       ${{ inputs.gender }}
+          INPUT_AGE:          ${{ inputs.age }}
+          INPUT_MUSCLE:       ${{ inputs.muscle }}
+          INPUT_WEIGHT:       ${{ inputs.weight }}
+          INPUT_HEIGHT:       ${{ inputs.height }}
+          INPUT_SKIN:         ${{ inputs.skin_tone }}
+          INPUT_HAIR_STYLE:   ${{ inputs.hair_style }}
+          INPUT_HAIR_COLOR:   ${{ inputs.hair_color }}
+          INPUT_FACIAL_HAIR:  ${{ inputs.facial_hair }}
+          INPUT_EYES:         ${{ inputs.eyes }}
+          INPUT_OUTFIT:       ${{ inputs.outfit }}
+          INPUT_TOP:          ${{ inputs.top }}
+          INPUT_BOTTOM:       ${{ inputs.bottom }}
+          INPUT_SHOES:        ${{ inputs.shoes }}
+          INPUT_HAT:          ${{ inputs.hat }}
+          INPUT_WEAPON:       ${{ inputs.weapon }}
+          INPUT_EXPRESSION:   ${{ inputs.expression }}
+          INPUT_RIG:          ${{ inputs.rig }}
+          INPUT_ANIMATIONS:   ${{ inputs.animations }}
+          INPUT_REST_POSE:    ${{ inputs.rest_pose }}
+          INPUT_FACE_SHAPES:  ${{ inputs.face_shapes }}
+          INPUT_QUALITY:      ${{ inputs.quality }}
+          INPUT_JSON:         ${{ inputs.config_json }}
         run: |
-          set -euo pipefail
           mkdir -p axev-build
+          python3 << 'PYEOF'
+          import json, os
 
-          # Mapeamento da categoria da app para o nome exacto do preset no motor.
-          # A app envia identity.category (ex: "Soldier"), o motor precisa do nome completo.
-          map_preset() {
-            local cat="$1"
-            case "$(echo "$cat" | tr '[:upper:]' '[:lower:]')" in
-              "soldier"|"the soldier")               echo "The Soldier" ;;
-              "african warrior"|"the african warrior") echo "The African Warrior" ;;
-              "american warrior")                     echo "The Soldier" ;;
-              "police officer"|"the police officer")  echo "The Police Officer (Nigeria)" ;;
-              "american sheriff"|"the american sheriff") echo "The American Sheriff" ;;
-              "detective")                            echo "Detective" ;;
-              "gangster"|"the gangster")              echo "The Gangster" ;;
-              "spy"|"secret agent"|"the secret agent") echo "The Secret Agent" ;;
-              "bodyguard"|"the bodyguard")            echo "The Bodyguard" ;;
-              "priest"|"the priest")                  echo "The Priest" ;;
-              "hitman"|"the professional hitman")     echo "The Professional Hitman" ;;
-              "adventurer"|"the adventurer")          echo "The Adventurer" ;;
-              "cyberpunk"|"cyberpunk hacker")         echo "The Cyberpunk Hacker" ;;
-              "wasteland"|"wasteland survivor")       echo "The Wasteland Survivor" ;;
-              "elder")                                echo "Elder" ;;
-              "teen")                                 echo "Teen" ;;
-              "heavy brute")                          echo "Heavy brute" ;;
-              "businesswoman")                        echo "Businesswoman" ;;
-              "athletic woman")                       echo "Athletic woman" ;;
-              "athletic man"|"athletic"|"")           echo "Athletic man" ;;
-              *)
-                # Tentativa directa: o utilizador pode ter passado o nome completo
-                echo "$cat"
-                ;;
-            esac
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          preset = env("INPUT_PRESET", "Athletic man")
+
+          # Defaults base
+          params = {
+            "name": env("INPUT_NAME", preset) or preset,
+            "detail": env("INPUT_QUALITY", "high").lower(),
+            "rig": env("INPUT_RIG", "game"),
+            "restPose": env("INPUT_REST_POSE", "A"),
+            "animations": env("INPUT_ANIMATIONS", "yes") == "yes",
+            "faceShapes": env("INPUT_FACE_SHAPES", "yes") == "yes",
+            "speechShapes": True,
+            "faceBones": True,
           }
-
-          RESOLVED_PRESET=$(map_preset "$INPUT_PRESET")
-          echo "RESOLVED_PRESET=$RESOLVED_PRESET" >> "$GITHUB_ENV"
-          echo "Preset da app: '$INPUT_PRESET' → Motor: '$RESOLVED_PRESET'"
-
-          # Se foi fornecido config_json, extrair parâmetros úteis e criar params.json
-          # que combina o preset base com as personalizações da app.
-          if [ -n "$INPUT_JSON" ]; then
-            python3 << 'PYEOF'
-          import json, os, sys
-
-          config_json = os.environ.get("INPUT_JSON", "")
-          preset_name = os.environ.get("RESOLVED_PRESET", "Athletic man")
-          char_name   = os.environ.get("INPUT_NAME", "AXEV Character")
-
-          try:
-              app_config = json.loads(config_json)
-          except json.JSONDecodeError as e:
-              print(f"[WARNING] config_json inválido: {e}. A usar apenas o preset.", flush=True)
-              app_config = {}
-
-          # Tabela de conversão: campos da app → campos HumanParams do motor
-          appearance = app_config.get("appearance", {})
-          identity   = app_config.get("identity", {})
-          export_cfg = app_config.get("export", {})
-
-          # Construir overrides a partir da app
-          overrides = {}
 
           # Género
-          gender_str = identity.get("gender", "Male")
-          if gender_str == "Female":
-              overrides["gender"] = 0.0
-          elif gender_str == "Male":
-              overrides["gender"] = 1.0
+          g = env("INPUT_GENDER", "male")
+          params["gender"] = 0.0 if g == "female" else (0.5 if g == "androgynous" else 1.0)
 
-          # Idade (a app usa string "25", motor usa 0..1)
+          # Idade
           try:
-              age_years = int(identity.get("age", "25"))
-              age_years = max(12, min(90, age_years))
-              if age_years < 25:
-                  age_norm = 0.1875 + ((age_years - 11) / 14) * 0.3125 if age_years >= 11 else (age_years / 11) * 0.1875
-              else:
-                  age_norm = 0.5 + ((age_years - 25) / 65) * 0.5
-              overrides["age"] = round(age_norm, 4)
-          except (ValueError, TypeError):
-              pass
+            y = int(env("INPUT_AGE", "25"))
+            y = max(12, min(90, y))
+            if y < 25:
+              params["age"] = 0.1875 + ((y-11)/14)*0.3125 if y >= 11 else (y/11)*0.1875
+            else:
+              params["age"] = 0.5 + ((y-25)/65)*0.5
+          except: pass
 
-          # Corpo
-          body_map = {
-              "Normal": {"muscle": 0.6, "weight": 0.5},
-              "Athletic": {"muscle": 0.75, "weight": 0.45},
-              "Heavy": {"muscle": 0.6, "weight": 0.75},
-              "Slim": {"muscle": 0.4, "weight": 0.3},
-          }
-          body = body_map.get(appearance.get("bodyType", "Normal"), {})
-          overrides.update(body)
+          # Musculatura
+          muscle_map = {"none":0.1,"slim":0.3,"medium":0.5,"athletic":0.7,"muscular":0.85,"very muscular":1.0}
+          params["muscle"] = muscle_map.get(env("INPUT_MUSCLE","medium"), 0.6)
+
+          # Peso
+          weight_map = {"very slim":0.15,"slim":0.3,"average":0.5,"heavy":0.7,"very heavy":0.9}
+          params["weight"] = weight_map.get(env("INPUT_WEIGHT","average"), 0.5)
 
           # Altura
-          try:
-              h = float(appearance.get("height", 1.0))
-              overrides["height"] = round(max(0.0, min(1.0, (h - 0.5) / 1.0)), 3)
-          except (ValueError, TypeError):
-              pass
+          height_map = {"very short":0.1,"short":0.3,"average":0.5,"tall":0.7,"very tall":0.9}
+          params["height"] = height_map.get(env("INPUT_HEIGHT","average"), 0.5)
 
-          # Cor de pele → africano/asiático/caucasiano (aproximação)
+          # Tom de pele
           skin_map = {
-              "Light": {"african": 0.0, "asian": 0.1, "caucasian": 0.9},
-              "Medium": {"african": 0.3, "asian": 0.2, "caucasian": 0.5},
-              "Dark": {"african": 0.8, "asian": 0.1, "caucasian": 0.1},
-              "Very Dark": {"african": 1.0, "asian": 0.0, "caucasian": 0.0},
+            "very light":  {"african":0.0,"asian":0.05,"caucasian":0.95},
+            "light":       {"african":0.0,"asian":0.1,"caucasian":0.9},
+            "mixed":       {"african":0.3,"asian":0.2,"caucasian":0.5},
+            "dark":        {"african":0.7,"asian":0.1,"caucasian":0.2},
+            "very dark":   {"african":0.9,"asian":0.05,"caucasian":0.05},
+            "african":     {"african":1.0,"asian":0.0,"caucasian":0.0},
+            "asian":       {"african":0.0,"asian":1.0,"caucasian":0.0},
+            "caucasian":   {"african":0.0,"asian":0.0,"caucasian":1.0},
           }
-          skin_vals = skin_map.get(appearance.get("skinTone", "Medium"), {})
-          overrides.update(skin_vals)
+          params.update(skin_map.get(env("INPUT_SKIN","mixed"), {"african":0.3,"asian":0.2,"caucasian":0.5}))
 
           # Cabelo
-          hair_map = {
-              "Short": "short02", "Buzz": "buzz", "Long": "long01",
-              "Afro": "afro01", "Cornrows": "cornrows", "None": "none",
-              "Ponytail": "ponytail01", "Bob": "bob02",
+          h = env("INPUT_HAIR_STYLE","short02")
+          if h != "preset_default": params["hair"] = h
+
+          hair_color_map = {
+            "black":"#15100c","dark brown":"#241a13","brown":"#3b2a1d",
+            "blonde":"#c8a86b","red":"#7a2e14","grey":"#6a6060",
+            "white":"#c8c0b4","purple":"#4a1a6a","blue":"#1a2a6a","pink":"#c060a0",
           }
-          hair_id = hair_map.get(appearance.get("hairStyle", "Short"))
-          if hair_id:
-              overrides["hair"] = hair_id
+          hc = hair_color_map.get(env("INPUT_HAIR_COLOR","black"))
+          if hc: params["hairColor"] = hc
 
-          # Cor do cabelo
-          hair_col_map = {
-              "Black": "#15100c", "Brown": "#3b2a1d", "Blonde": "#c8a86b",
-              "Red": "#7a2e14", "White": "#c8c0b4", "Grey": "#6a6060",
-          }
-          hc = hair_col_map.get(appearance.get("hairColor", "Black"))
-          if hc:
-              overrides["hairColor"] = hc
+          # Pelo facial
+          fh = env("INPUT_FACIAL_HAIR","none")
+          if fh != "preset_default": params["facialHair"] = fh
 
-          # Barba
-          beard_map = {
-              "None": "none", "Stubble": "stubble", "Full": "full_beard",
-              "Short": "short_beard", "Goatee": "goatee", "Mustache": "mustache",
-          }
-          bd = beard_map.get(appearance.get("beardStyle", "None"))
-          if bd:
-              overrides["facialHair"] = bd
+          # Olhos
+          params["eyes"] = env("INPUT_EYES","brown")
 
-          # Animações
-          overrides["animations"] = export_cfg.get("includeAnimations", True)
-          rig_enabled = export_cfg.get("includeRig", True)
-          overrides["rig"] = "game" if rig_enabled else "none"
+          # Expressão
+          params["expression"] = env("INPUT_EXPRESSION","neutral")
 
-          # Nome do personagem
-          overrides["name"] = char_name if char_name else preset_name
+          # Arma
+          w = env("INPUT_WEAPON","none")
+          if w != "preset_default": params["weapon"] = w
 
-          # Guardar params de overrides e config original
-          with open("axev-build/app_overrides.json", "w") as f:
-              json.dump(overrides, f, indent=2)
+          # Roupa
+          outfit = env("INPUT_OUTFIT","preset_default")
+          if outfit == "preset_default":
+            pass  # usa o preset
+          elif outfit == "none":
+            params["outfit"] = "none"
+            top = env("INPUT_TOP","preset_default")
+            bottom = env("INPUT_BOTTOM","preset_default")
+            if top not in ("preset_default",""): params["top"] = top
+            if bottom not in ("preset_default",""): params["bottom"] = bottom
+          else:
+            params["outfit"] = outfit
 
-          with open("axev-build/app_config_original.json", "w") as f:
-              json.dump(app_config, f, indent=2)
+          shoes = env("INPUT_SHOES","preset_default")
+          if shoes not in ("preset_default",""): params["shoes"] = shoes
 
-          print(f"✅ Overrides calculados: {list(overrides.keys())}")
-          print(json.dumps(overrides, indent=2))
+          hat = env("INPUT_HAT","none")
+          if hat not in ("preset_default",""): params["hat"] = hat
+
+          # Se foi fornecido config_json, merge (prioridade: inputs do workflow > config_json)
+          config_json_str = env("INPUT_JSON","")
+          if config_json_str:
+            try:
+              app_cfg = json.loads(config_json_str)
+              # guardar original
+              with open("axev-build/app_config_original.json","w") as f:
+                json.dump(app_cfg, f, indent=2)
+            except: pass
+
+          with open("axev-build/character_overrides.json","w") as f:
+            json.dump(params, f, indent=2)
+
+          print("✅ Parâmetros calculados:")
+          print(json.dumps(params, indent=2))
           PYEOF
-          else
-            # Sem config_json — apenas o preset
-            echo '{}' > axev-build/app_overrides.json
-            echo '{}' > axev-build/app_config_original.json
-            echo "Sem config_json — será usado apenas o preset '$RESOLVED_PRESET'."
-          fi
+          echo "RESOLVED_PRESET=${{ inputs.preset }}" >> "$GITHUB_ENV"
 
-      # ─── 8. GERAR O PERSONAGEM ───────────────────────────────────────────────
+      # ─── 8. GERAR PERSONAGEM ──────────────────────────────────────────────
       - name: Gerar personagem com Ara 3D Gen
         working-directory: ara-3d-gen
         env:
-          RESOLVED_PRESET: ${{ env.RESOLVED_PRESET }}
-          QUALITY_NORM:    ${{ env.QUALITY_NORM }}
           FORMATS_NORM:    ${{ env.FORMATS_NORM }}
-          CHAR_NAME:       ${{ inputs.character_name }}
+          RESOLVED_PRESET: ${{ inputs.preset }}
+          INPUT_QUALITY:   ${{ inputs.quality }}
         run: |
           set -euo pipefail
           mkdir -p out
 
-          # Verificar se o preset existe
-          node -e "
-            import('../src/core/params.js').then(m => {
-              const presets = Object.keys(m.PRESETS);
-              const name = process.env.RESOLVED_PRESET;
-              if (!presets.includes(name) && name !== 'Athletic man') {
-                console.error('Preset não encontrado: ' + name);
-                console.error('Presets disponíveis: ' + presets.join(', '));
-                process.exit(1);
-              }
-              console.log('Preset confirmado: ' + name);
-            }).catch(e => { console.error(e.message); process.exit(1); });
-          " || {
-            echo "::warning::Não foi possível verificar o preset via Node — a continuar com '$RESOLVED_PRESET'."
-          }
+          # Combinar preset + overrides
+          node --input-type=module << 'JSEOF'
+          import { readFileSync, writeFileSync } from 'fs';
+          import { DEFAULT_PARAMS, PRESETS } from './src/core/params.js';
 
-          # Verificar se há overrides da app
-          OVERRIDES=$(cat ../axev-build/app_overrides.json)
-          HAS_OVERRIDES=false
-          if [ "$OVERRIDES" != "{}" ] && [ -n "$OVERRIDES" ]; then
-            HAS_OVERRIDES=true
-          fi
+          const preset = PRESETS[process.env.RESOLVED_PRESET] ?? {};
+          const overrides = JSON.parse(readFileSync('../axev-build/character_overrides.json','utf8'));
+          const final = { ...DEFAULT_PARAMS, ...preset, ...overrides };
+          writeFileSync('../axev-build/character.params.json', JSON.stringify(final, null, 2));
+          console.log('✅ Parâmetros finais: preset "' + process.env.RESOLVED_PRESET + '" + ' + Object.keys(overrides).length + ' overrides');
+          JSEOF
 
-          if [ "$HAS_OVERRIDES" = "true" ]; then
-            # Combinar preset + overrides num ficheiro params.json
-            # O motor suporta --params que substitui DEFAULT_PARAMS (não o preset directamente).
-            # Estratégia: preset fornecido como --preset, overrides como variáveis de ambiente
-            # não são possíveis no CLI — usamos --params com o preset como base + overrides.
-            node -e "
-              import('../src/core/params.js').then(m => {
-                const preset = m.PRESETS[process.env.RESOLVED_PRESET] ?? {};
-                const defaults = m.DEFAULT_PARAMS;
-                const overrides = JSON.parse(require('fs').readFileSync('../axev-build/app_overrides.json','utf8'));
-                const final = { ...defaults, ...preset, ...overrides, name: process.env.CHAR_NAME || defaults.name };
-                require('fs').writeFileSync('../axev-build/character.params.json', JSON.stringify(final, null, 2));
-                console.log('Parâmetros finais gerados: ' + Object.keys(final).length + ' campos');
-              }).catch(e => { console.error(e.message); process.exit(1); });
-            "
-            echo "A executar com --params (preset + overrides da app)..."
-            npm run export -- \
-              --params "../axev-build/character.params.json" \
-              --detail "$QUALITY_NORM" \
-              --formats "$FORMATS_NORM" \
-              --out out
-          else
-            # Sem overrides — usar apenas o preset
-            echo "A executar com --preset '$RESOLVED_PRESET'..."
-            npm run export -- \
-              --preset "$RESOLVED_PRESET" \
-              --detail "$QUALITY_NORM" \
-              --formats "$FORMATS_NORM" \
-              --out out
-          fi
+          echo "A gerar personagem..."
+          npm run export -- \
+            --params "../axev-build/character.params.json" \
+            --formats "$FORMATS_NORM" \
+            --out out
 
           echo "✅ Geração concluída."
+          find out -type f -printf '  %p (%s bytes)\n'
 
-      # ─── 9. VALIDAR RESULTADOS ──────────────────────────────────────────────
+      # ─── 9. VALIDAR RESULTADOS ────────────────────────────────────────────
       - name: Validar ficheiros exportados
         env:
           FORMATS_NORM: ${{ env.FORMATS_NORM }}
         run: |
           set -euo pipefail
-
           OUT="ara-3d-gen/out"
 
-          # Verificar que a pasta de saída existe e não está vazia
-          if [ ! -d "$OUT" ]; then
-            echo "::error::Pasta de saída '$OUT' não foi criada."
-            exit 1
-          fi
-          if [ -z "$(find "$OUT" -type f -print -quit)" ]; then
-            echo "::error::Pasta de saída '$OUT' está vazia — nenhum ficheiro exportado."
+          if [ ! -d "$OUT" ] || [ -z "$(find "$OUT" -type f -print -quit)" ]; then
+            echo "::error::Nenhum ficheiro exportado em '$OUT'."
             exit 1
           fi
 
-          echo "Ficheiros produzidos:"
-          find "$OUT" -type f -printf '  %p (%s bytes)\n'
-
-          # Verificar formatos solicitados
           IFS=',' read -ra FMTS <<< "$FORMATS_NORM"
-          ALL_OK=true
           for fmt in "${FMTS[@]}"; do
             fmt=$(echo "$fmt" | tr -d '[:space:]')
-            case "$fmt" in
-              glb)
-                FILES=$(find "$OUT" -name "*.glb" -type f)
-                if [ -z "$FILES" ]; then
-                  echo "::error::Formato GLB solicitado mas nenhum .glb encontrado em '$OUT'."
-                  ALL_OK=false
-                else
-                  for f in $FILES; do
-                    SIZE=$(stat -c%s "$f")
-                    if [ "$SIZE" -lt 1024 ]; then
-                      echo "::error::Ficheiro GLB suspeito (${SIZE} bytes): $f"
-                      ALL_OK=false
-                    else
-                      echo "✅ GLB: $f ($(( SIZE / 1024 )) KB)"
-                    fi
-                  done
-                fi
-                ;;
-              fbx)
-                FILES=$(find "$OUT" -name "*.fbx" -type f)
-                if [ -z "$FILES" ]; then
-                  echo "::error::Formato FBX solicitado mas nenhum .fbx encontrado."
-                  ALL_OK=false
-                else
-                  for f in $FILES; do
-                    SIZE=$(stat -c%s "$f")
-                    echo "✅ FBX: $f ($(( SIZE / 1024 )) KB)"
-                  done
-                fi
-                ;;
-              obj)
-                FILES=$(find "$OUT" -name "*.obj" -type f)
-                if [ -z "$FILES" ]; then
-                  echo "::error::Formato OBJ solicitado mas nenhum .obj encontrado."
-                  ALL_OK=false
-                else
-                  for f in $FILES; do
-                    echo "✅ OBJ: $f"
-                    # OBJ sem rigging ou animações (formato estático por natureza)
-                  done
-                fi
-                ;;
-              zip)
-                FILES=$(find "$OUT" -name "*.zip" -type f)
-                if [ -z "$FILES" ]; then
-                  echo "::error::Formato ZIP solicitado mas nenhum .zip encontrado."
-                  ALL_OK=false
-                else
-                  for f in $FILES; do
-                    SIZE=$(stat -c%s "$f")
-                    echo "✅ ZIP: $f ($(( SIZE / 1024 )) KB)"
-                    # Listar conteúdo do ZIP
-                    unzip -l "$f" | head -30 || true
-                  done
-                fi
-                ;;
-            esac
-          done
-
-          if [ "$ALL_OK" != "true" ]; then
-            echo "::error::Validação falhou — nem todos os formatos solicitados foram produzidos."
-            exit 1
-          fi
-          echo "✅ Todos os formatos validados com sucesso."
-
-      # ─── 10. RELATÓRIO TÉCNICO ──────────────────────────────────────────────
-      - name: Criar relatório técnico AXEV_CHARACTER_REPORT.md
-        env:
-          CHARACTER_ID:    ${{ inputs.character_id }}
-          CHARACTER_NAME:  ${{ inputs.character_name }}
-          PRESET_APP:      ${{ inputs.preset }}
-          FORMATS_NORM:    ${{ env.FORMATS_NORM }}
-          QUALITY_NORM:    ${{ env.QUALITY_NORM }}
-          RESOLVED_PRESET: ${{ env.RESOLVED_PRESET }}
-          RUN_ID:          ${{ github.run_id }}
-          RUN_NUMBER:      ${{ github.run_number }}
-          REPO:            ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          mkdir -p axev-output/exports
-
-          OUT="ara-3d-gen/out"
-
-          # Copiar ficheiros exportados
-          cp -r "$OUT"/. axev-output/exports/ 2>/dev/null || true
-
-          # Copiar parâmetros finais (se existirem)
-          if [ -f "axev-build/character.params.json" ]; then
-            cp axev-build/character.params.json axev-output/AXEV_CHARACTER_PARAMS.json
-          else
-            # Sem overrides — registar que foi usado só o preset
-            echo "{\"preset\": \"$RESOLVED_PRESET\", \"detail\": \"$QUALITY_NORM\", \"note\": \"Apenas preset utilizado, sem overrides da app.\"}" \
-              > axev-output/AXEV_CHARACTER_PARAMS.json
-          fi
-
-          # Listar ficheiros produzidos
-          FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
-
-          # Verificar formatos presentes
-          FORMATS_GERADOS=""
-          for fmt in glb fbx obj zip; do
-            if find axev-output/exports -name "*.${fmt}" -type f | grep -q .; then
-              FORMATS_GERADOS="$FORMATS_GERADOS $fmt"
+            FILES=$(find "$OUT" -name "*.${fmt}" -type f 2>/dev/null)
+            if [ -z "$FILES" ]; then
+              echo "::error::Formato $fmt solicitado mas não produzido."
+              exit 1
             fi
+            for f in $FILES; do
+              SIZE=$(stat -c%s "$f")
+              echo "✅ $fmt: $f ($(( SIZE / 1024 )) KB)"
+            done
           done
-          FORMATS_GERADOS=$(echo "$FORMATS_GERADOS" | tr ' ' ',' | sed 's/^,//')
+          echo "✅ Todos os formatos validados."
 
-          # Data de execução
-          DATA_EXEC=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+      # ─── 10. RELATÓRIO ───────────────────────────────────────────────────
+      - name: Criar relatório técnico
+        env:
+          CHARACTER_ID:   ${{ inputs.character_id }}
+          CHARACTER_NAME: ${{ inputs.character_name }}
+          PRESET:         ${{ inputs.preset }}
+          GENDER:         ${{ inputs.gender }}
+          AGE:            ${{ inputs.age }}
+          MUSCLE:         ${{ inputs.muscle }}
+          WEIGHT:         ${{ inputs.weight }}
+          HEIGHT_VAL:     ${{ inputs.height }}
+          SKIN:           ${{ inputs.skin_tone }}
+          HAIR:           ${{ inputs.hair_style }}
+          HAIR_COLOR:     ${{ inputs.hair_color }}
+          EYES:           ${{ inputs.eyes }}
+          OUTFIT:         ${{ inputs.outfit }}
+          WEAPON:         ${{ inputs.weapon }}
+          EXPRESSION:     ${{ inputs.expression }}
+          RIG:            ${{ inputs.rig }}
+          ANIMATIONS:     ${{ inputs.animations }}
+          FORMATS_NORM:   ${{ env.FORMATS_NORM }}
+          QUALITY:        ${{ inputs.quality }}
+          RUN_NUMBER:     ${{ github.run_number }}
+          REPO:           ${{ github.repository }}
+        run: |
+          mkdir -p axev-output/exports
+          cp -r ara-3d-gen/out/. axev-output/exports/ 2>/dev/null || true
+          cp axev-build/character.params.json axev-output/AXEV_CHARACTER_PARAMS.json 2>/dev/null || true
 
-          cat > axev-output/AXEV_CHARACTER_REPORT.md << REPORTEOF
-          # AXEV 3D STUDIO — Relatório Técnico do Personagem
+          FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
+          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          cat > axev-output/AXEV_CHARACTER_REPORT.md << EOF
+          # AXEV 3D — Relatório do Personagem
 
           ## Identificação
-          - **character_id**: ${CHARACTER_ID}
-          - **character_name**: ${CHARACTER_NAME}
-          - **Execução GitHub Actions**: Run #${RUN_NUMBER} (ID: ${RUN_ID})
-          - **Repositório**: ${REPO}
-          - **Data**: ${DATA_EXEC}
+          - **ID**: ${CHARACTER_ID}
+          - **Nome**: ${CHARACTER_NAME}
+          - **Run**: #${RUN_NUMBER} | **Repo**: ${REPO}
+          - **Data**: ${DATA}
 
-          ## Configuração Utilizada
-          - **Preset (app)**: ${PRESET_APP}
-          - **Preset (motor)**: ${RESOLVED_PRESET}
-          - **Qualidade solicitada**: ${QUALITY_NORM}
-          - **Formatos solicitados**: ${FORMATS_NORM}
-          - **Formatos efectivamente gerados**: ${FORMATS_GERADOS}
-
-          ## Notas de Compatibilidade
-          - O preset enviado pela app Android (\`identity.category\`) foi convertido para o nome
-            exacto reconhecido pelo motor Ara 3D Gen.
-          - OBJ não preserva rigging nem animações (limitação do formato).
-          - ZIP contém o conteúdo definido pelo motor (ver ficheiros abaixo).
+          ## Configuração
+          | Campo | Valor |
+          |-------|-------|
+          | Preset | ${PRESET} |
+          | Género | ${GENDER} |
+          | Idade | ${AGE} anos |
+          | Musculatura | ${MUSCLE} |
+          | Peso | ${WEIGHT} |
+          | Altura | ${HEIGHT_VAL} |
+          | Tom de pele | ${SKIN} |
+          | Cabelo | ${HAIR} (${HAIR_COLOR}) |
+          | Olhos | ${EYES} |
+          | Outfit | ${OUTFIT} |
+          | Arma | ${WEAPON} |
+          | Expressão | ${EXPRESSION} |
+          | Rig | ${RIG} |
+          | Animações | ${ANIMATIONS} |
+          | Qualidade | ${QUALITY} |
+          | Formatos | ${FORMATS_NORM} |
 
           ## Ficheiros Produzidos
           ${FILES_LIST}
 
-          ## Informações Não Verificadas
-          - Número de ossos: não verificado automaticamente (requer ferramenta GLB externa).
-          - Lista de animações incluídas: não verificada automaticamente.
-          - Texturas e materiais: presentes conforme produzido pelo motor (não inspeccionados individualmente).
-
-          ## Parâmetros Aplicados
-          Ver ficheiro \`AXEV_CHARACTER_PARAMS.json\` neste artefacto.
-
           ---
-          *Gerado automaticamente pelo workflow AXEV 3D — ara-axev-crime.yml*
-          REPORTEOF
+          *Gerado por AXEV 3D Studio — ara-axev-crime.yml*
+          EOF
 
           echo "✅ Relatório criado."
-          cat axev-output/AXEV_CHARACTER_REPORT.md
 
-      # ─── 11. PUBLICAR ARTEFACTO ─────────────────────────────────────────────
-      - name: Publicar artefacto AXEV-CHARACTER
+      # ─── 11. PUBLICAR ARTEFACTO ──────────────────────────────────────────
+      - name: Publicar artefacto
         uses: actions/upload-artifact@v4
         with:
           name: AXEV-CHARACTER-${{ inputs.character_id }}
