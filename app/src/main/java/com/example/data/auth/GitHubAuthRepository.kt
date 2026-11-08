@@ -2,8 +2,6 @@ package com.example.data.auth
 
 import android.content.Context
 import com.example.BuildConfig
-import com.example.data.api.AccessTokenResponse
-import com.example.data.api.DeviceCodeResponse
 import com.example.data.api.GitHubApi
 import com.example.data.api.GitHubUser
 import com.squareup.moshi.Moshi
@@ -15,6 +13,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 sealed class AuthResult {
+    /** Device Flow — código para mostrar ao utilizador */
     data class DeviceCodeIssued(
         val userCode: String,
         val verificationUri: String,
@@ -23,6 +22,9 @@ sealed class AuthResult {
         val interval: Int
     ) : AuthResult()
 
+    /** Web Flow — URL para abrir no browser */
+    data class WebFlowStarted(val authUrl: String) : AuthResult()
+
     data class Success(val accessToken: String) : AuthResult()
     data class Pending(val error: String) : AuthResult()
     data class Error(val message: String) : AuthResult()
@@ -30,23 +32,26 @@ sealed class AuthResult {
 }
 
 /**
- * Handles GitHub Device Flow authentication.
+ * Handles GitHub OAuth authentication (Web Flow e Device Flow).
  *
- * Flow:
- * 1. requestDeviceCode() → returns user_code + verification_uri to show in UI
- * 2. User opens browser, enters user_code on github.com/login/device
- * 3. pollForToken() → polls until user authorizes or code expires
- * 4. On success, token is saved securely via AuthTokenManager
+ * Web Flow:
+ * 1. buildWebAuthUrl() → retorna URL para abrir no browser
+ * 2. Utilizador autoriza no GitHub
+ * 3. GitHub redireciona → Vercel → axev3d://callback?token=xxx
+ * 4. handleWebCallback(token) → guarda o token e autentica
+ *
+ * Device Flow (legado):
+ * 1. requestDeviceCode() → retorna user_code + verification_uri
+ * 2. pollForToken() → polling até autorização
  */
 class GitHubAuthRepository(context: Context) {
 
-    private val tokenManager = AuthTokenManager(context)
+    val tokenManager = AuthTokenManager(context)
 
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    // Device Flow uses github.com (not api.github.com)
     private val githubOAuthApi: GitHubApi by lazy {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
@@ -82,15 +87,44 @@ class GitHubAuthRepository(context: Context) {
     private val clientId: String
         get() = BuildConfig.GITHUB_CLIENT_ID
 
+    // ── Web Flow ──────────────────────────────────────────────────────────────
+
     /**
-     * Step 1: Request device code from GitHub.
-     * Scopes requested: public_repo (create repos) + read:user (profile data)
+     * Constrói a URL de autorização OAuth Web Flow.
+     * O utilizador abre esta URL no browser, autoriza, e o GitHub redireciona
+     * para a Vercel que por sua vez redireciona para axev3d://callback?token=xxx
      */
+    fun buildWebAuthUrl(): AuthResult {
+        if (clientId.isBlank()) {
+            return AuthResult.Error(
+                "GITHUB_CLIENT_ID is not configured. Add it to your secrets."
+            )
+        }
+        val redirectUri = "https://provedoraxev3ds.vercel.app/api/auth/callback"
+        val scope = "public_repo read:user"
+        val url = "https://github.com/login/oauth/authorize" +
+                "?client_id=${clientId}" +
+                "&redirect_uri=${android.net.Uri.encode(redirectUri)}" +
+                "&scope=${android.net.Uri.encode(scope)}"
+        return AuthResult.WebFlowStarted(url)
+    }
+
+    /**
+     * Chamado pela MainActivity quando recebe o deep link axev3d://callback?token=xxx
+     * Guarda o token e retorna sucesso.
+     */
+    fun handleWebCallback(token: String): AuthResult {
+        if (token.isBlank()) return AuthResult.Error("Token is empty")
+        tokenManager.saveAccessToken(token)
+        return AuthResult.Success(token)
+    }
+
+    // ── Device Flow (legado) ──────────────────────────────────────────────────
+
     suspend fun requestDeviceCode(): AuthResult {
         if (clientId.isBlank()) {
             return AuthResult.Error(
-                "GITHUB_CLIENT_ID is not configured. " +
-                "Add it to your .env file or Secrets panel."
+                "GITHUB_CLIENT_ID is not configured. Add it to your .env file or Secrets panel."
             )
         }
         return try {
@@ -115,11 +149,6 @@ class GitHubAuthRepository(context: Context) {
         }
     }
 
-    /**
-     * Step 2: Poll GitHub for the access token.
-     * Respects the interval returned by GitHub (default 5s).
-     * Returns AuthResult.Success, AuthResult.Pending, AuthResult.Expired, or AuthResult.Error.
-     */
     suspend fun pollForToken(deviceCode: String, intervalSeconds: Int = 5): AuthResult {
         return try {
             delay(intervalSeconds * 1000L)
@@ -131,7 +160,6 @@ class GitHubAuthRepository(context: Context) {
             when {
                 !response.isSuccessful -> AuthResult.Error("HTTP ${response.code()}")
                 body?.access_token != null -> {
-                    // Save token securely
                     tokenManager.saveAccessToken(body.access_token)
                     AuthResult.Success(body.access_token)
                 }
@@ -146,9 +174,8 @@ class GitHubAuthRepository(context: Context) {
         }
     }
 
-    /**
-     * Fetch authenticated user profile using saved token.
-     */
+    // ── Utils ─────────────────────────────────────────────────────────────────
+
     suspend fun fetchUser(): GitHubUser? {
         val bearer = tokenManager.getBearerToken() ?: return null
         return try {
