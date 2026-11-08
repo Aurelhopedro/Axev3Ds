@@ -13,9 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.models.CharacterConfig
+import com.example.ui.CharacterTranslations
 import com.example.ui.MainViewModel
 import com.example.ui.UiState
 import com.example.ui.components.SectionHeader
@@ -28,19 +30,20 @@ import com.example.ui.theme.TacticalOrange
 @Composable
 fun CreatorScreen(
     viewModel: MainViewModel,
-    onGenerate: () -> Unit = {},   // chamado no passo 6 quando o utilizador confirma
-    onBack: () -> Unit = {}        // volta ao Dashboard
+    onGenerate: () -> Unit = {},
+    onBack: () -> Unit = {}
 ) {
     var currentStep by remember { mutableStateOf(1) }
     val character by viewModel.currentCharacter.collectAsState()
     val uiState   by viewModel.uiState.collectAsState()
+    val opts      by viewModel.workflowOptions.collectAsState()
 
-    // Opções dinâmicas — carregadas do YAML do workflow em tempo real
-    val opts by viewModel.workflowOptions.collectAsState()
+    // Traduções baseadas na língua do dispositivo
+    val context = LocalContext.current
+    val t = remember(context) { CharacterTranslations.get(context) }
 
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Cabeçalho com botão de voltar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -64,18 +67,18 @@ fun CreatorScreen(
 
         Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
             when (currentStep) {
-                1 -> IdentityStep(character, opts.presets, opts.genderAge)
+                1 -> IdentityStep(character, opts.presets, opts.genderAge, t)
                         { viewModel.updateCharacter(it) }
                 2 -> AppearanceStep(character, opts.body, opts.skinTone,
-                        opts.hair, opts.facialHair, opts.eyes)
+                        opts.hair, opts.facialHair, opts.eyes, t)
                         { viewModel.updateCharacter(it) }
-                3 -> StyleStep(character, opts.expression, opts.rigAnim, opts.quality)
+                3 -> StyleStep(character, opts.expression, opts.rigAnim, opts.quality, t)
                         { viewModel.updateCharacter(it) }
-                4 -> ClothingStep(character, opts.outfit, opts.shoesHat, opts.weapon)
+                4 -> ClothingStep(character, opts.outfit, opts.shoesHat, opts.weapon, t)
                         { viewModel.updateCharacter(it) }
-                5 -> ExportStep(character, opts.exportFormats)
+                5 -> ExportStep(character, opts.exportFormats, t)
                         { viewModel.updateCharacter(it) }
-                6 -> ReviewStep(character, uiState, onDispatch = onGenerate)
+                6 -> ReviewStep(character, uiState, t, onDispatch = onGenerate)
             }
         }
 
@@ -130,16 +133,23 @@ fun StepperHeader(currentStep: Int) {
     }
 }
 
-// ─── Utilitário: dropdown genérico ────────────────────────────────────────────
+// ─── Dropdown traduzido ───────────────────────────────────────────────────────
+//
+// [enOptions]  — lista de valores EN (vindos do workflow / CharacterConfig)
+// [selectedEn] — valor EN actualmente seleccionado
+// [t]          — traduções para a língua do dispositivo
+// [onSelect]   — devolve SEMPRE o valor EN ao caller (para guardar no config)
 
 @Composable
 fun WorkflowDropdown(
     label: String,
-    selected: String,
-    options: List<String>,
+    selectedEn: String,
+    enOptions: List<String>,
+    t: CharacterTranslations.Translations,
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
         Spacer(modifier = Modifier.height(4.dp))
@@ -147,12 +157,17 @@ fun WorkflowDropdown(
             OutlinedButton(
                 onClick  = { expanded = true },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(selected, maxLines = 1) }
+            ) {
+                Text(t.label(selectedEn), maxLines = 1)
+            }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { opt ->
+                enOptions.forEach { enValue ->
                     DropdownMenuItem(
-                        text    = { Text(opt) },
-                        onClick = { onSelect(opt); expanded = false }
+                        text    = { Text(t.label(enValue)) },
+                        onClick = {
+                            onSelect(enValue)   // guarda sempre o valor EN
+                            expanded = false
+                        }
                     )
                 }
             }
@@ -167,6 +182,7 @@ fun IdentityStep(
     config: CharacterConfig,
     presets: List<String>,
     genderAge: List<String>,
+    t: CharacterTranslations.Translations,
     onUpdate: (CharacterConfig) -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -181,9 +197,9 @@ fun IdentityStep(
                 singleLine    = true,
                 placeholder   = { Text("ex: AXEV Soldier") }
             )
-            WorkflowDropdown("PRESET", config.preset, presets)
+            WorkflowDropdown("PRESET", config.preset, presets, t)
                 { onUpdate(config.copy(preset = it)) }
-            WorkflowDropdown("GENDER & AGE", config.genderAge, genderAge)
+            WorkflowDropdown("GENDER & AGE", config.genderAge, genderAge, t)
                 { onUpdate(config.copy(genderAge = it)) }
         }
     }
@@ -199,20 +215,21 @@ fun AppearanceStep(
     hair: List<String>,
     facialHair: List<String>,
     eyes: List<String>,
+    t: CharacterTranslations.Translations,
     onUpdate: (CharacterConfig) -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Physical Traits")
         TacticalCard {
-            WorkflowDropdown("BODY (muscle:weight:height)", config.body, body)
+            WorkflowDropdown("BODY", config.body, body, t)
                 { onUpdate(config.copy(body = it)) }
-            WorkflowDropdown("SKIN TONE", config.skinTone, skinTone)
+            WorkflowDropdown("SKIN TONE", config.skinTone, skinTone, t)
                 { onUpdate(config.copy(skinTone = it)) }
-            WorkflowDropdown("HAIR (style:colour)", config.hair, hair)
+            WorkflowDropdown("HAIR", config.hair, hair, t)
                 { onUpdate(config.copy(hair = it)) }
-            WorkflowDropdown("FACIAL HAIR", config.facialHair, facialHair)
+            WorkflowDropdown("FACIAL HAIR", config.facialHair, facialHair, t)
                 { onUpdate(config.copy(facialHair = it)) }
-            WorkflowDropdown("EYE COLOUR", config.eyes, eyes)
+            WorkflowDropdown("EYE COLOUR", config.eyes, eyes, t)
                 { onUpdate(config.copy(eyes = it)) }
         }
     }
@@ -226,16 +243,17 @@ fun StyleStep(
     expression: List<String>,
     rigAnim: List<String>,
     quality: List<String>,
+    t: CharacterTranslations.Translations,
     onUpdate: (CharacterConfig) -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Visual Direction")
         TacticalCard {
-            WorkflowDropdown("EXPRESSION", config.expression, expression)
+            WorkflowDropdown("EXPRESSION", config.expression, expression, t)
                 { onUpdate(config.copy(expression = it)) }
-            WorkflowDropdown("RIG & ANIMATIONS (rig:anim:pose)", config.rigAnim, rigAnim)
+            WorkflowDropdown("RIG & ANIMATIONS", config.rigAnim, rigAnim, t)
                 { onUpdate(config.copy(rigAnim = it)) }
-            WorkflowDropdown("QUALITY", config.quality, quality)
+            WorkflowDropdown("QUALITY", config.quality, quality, t)
                 { onUpdate(config.copy(quality = it)) }
         }
     }
@@ -249,16 +267,17 @@ fun ClothingStep(
     outfit: List<String>,
     shoesHat: List<String>,
     weapon: List<String>,
+    t: CharacterTranslations.Translations,
     onUpdate: (CharacterConfig) -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Uniform & Gear")
         TacticalCard {
-            WorkflowDropdown("OUTFIT", config.outfit, outfit)
+            WorkflowDropdown("OUTFIT", config.outfit, outfit, t)
                 { onUpdate(config.copy(outfit = it)) }
-            WorkflowDropdown("SHOES : HAT", config.shoesHat, shoesHat)
+            WorkflowDropdown("SHOES : HAT", config.shoesHat, shoesHat, t)
                 { onUpdate(config.copy(shoesHat = it)) }
-            WorkflowDropdown("WEAPON", config.weapon, weapon)
+            WorkflowDropdown("WEAPON", config.weapon, weapon, t)
                 { onUpdate(config.copy(weapon = it)) }
         }
     }
@@ -270,12 +289,13 @@ fun ClothingStep(
 fun ExportStep(
     config: CharacterConfig,
     exportFormats: List<String>,
+    t: CharacterTranslations.Translations,
     onUpdate: (CharacterConfig) -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Export Center")
         TacticalCard {
-            WorkflowDropdown("EXPORT FORMAT(S)", config.exportFormats, exportFormats)
+            WorkflowDropdown("EXPORT FORMAT(S)", config.exportFormats, exportFormats, t)
                 { onUpdate(config.copy(exportFormats = it)) }
         }
     }
@@ -287,26 +307,29 @@ fun ExportStep(
 fun ReviewStep(
     config: CharacterConfig,
     uiState: UiState,
+    t: CharacterTranslations.Translations,
     onDispatch: () -> Unit
 ) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Final Review")
         TacticalCard {
+            // Na revisão mostramos o label traduzido para o utilizador confirmar,
+            // mas o CharacterConfig continua com os valores EN para enviar ao workflow
             ReviewRow("NAME",        config.name)
-            ReviewRow("PRESET",      config.preset)
-            ReviewRow("GENDER/AGE",  config.genderAge)
-            ReviewRow("BODY",        config.body)
-            ReviewRow("SKIN",        config.skinTone)
-            ReviewRow("HAIR",        config.hair)
-            ReviewRow("BEARD",       config.facialHair)
-            ReviewRow("EYES",        config.eyes)
-            ReviewRow("OUTFIT",      config.outfit)
-            ReviewRow("SHOES/HAT",   config.shoesHat)
-            ReviewRow("WEAPON",      config.weapon)
-            ReviewRow("EXPRESSION",  config.expression)
-            ReviewRow("RIG/ANIM",    config.rigAnim)
-            ReviewRow("QUALITY",     config.quality)
-            ReviewRow("FORMATS",     config.exportFormats)
+            ReviewRow("PRESET",      t.label(config.preset))
+            ReviewRow("GENDER/AGE",  t.label(config.genderAge))
+            ReviewRow("BODY",        t.label(config.body))
+            ReviewRow("SKIN",        t.label(config.skinTone))
+            ReviewRow("HAIR",        t.label(config.hair))
+            ReviewRow("BEARD",       t.label(config.facialHair))
+            ReviewRow("EYES",        t.label(config.eyes))
+            ReviewRow("OUTFIT",      t.label(config.outfit))
+            ReviewRow("SHOES/HAT",   t.label(config.shoesHat))
+            ReviewRow("WEAPON",      t.label(config.weapon))
+            ReviewRow("EXPRESSION",  t.label(config.expression))
+            ReviewRow("RIG/ANIM",    t.label(config.rigAnim))
+            ReviewRow("QUALITY",     t.label(config.quality))
+            ReviewRow("FORMATS",     t.label(config.exportFormats))
 
             Spacer(modifier = Modifier.height(16.dp))
 
