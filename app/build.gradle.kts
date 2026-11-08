@@ -20,6 +20,9 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // GitHub OAuth Client ID exposed as BuildConfig field (not secret)
+    buildConfigField("String", "GITHUB_CLIENT_ID", "\"${System.getenv("GITHUB_CLIENT_ID") ?: project.findProperty("GITHUB_CLIENT_ID") ?: ""}\"")
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -126,6 +129,8 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  // Security Crypto for EncryptedSharedPreferences (token storage)
+  implementation("androidx.security:security-crypto:1.1.0-alpha06")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
