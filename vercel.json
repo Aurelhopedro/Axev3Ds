@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/auth/callback",
-      "destination": "/backend/api/auth/callback.js"
+      "destination": "/api/auth/callback.js"
     }
   ]
 }
