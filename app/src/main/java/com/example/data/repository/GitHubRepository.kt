@@ -118,12 +118,6 @@ class GitHubRepository(private val context: Context) {
                     val repo = response.body()!!
                     tokenManager.saveCreatedRepo(repo.name, repo.owner.login, repo.html_url)
                     tokenManager.saveSelectedRepo(repo.full_name)
-
-                    // ── Injectar workflows automaticamente ────────────────────
-                    // Aguarda 2 s para o GitHub inicializar o branch main
-                    delay(2_000)
-                    injectWorkflows(bearer, repo.owner.login, repo.name)
-
                     RepoCreationResult.Success(repo)
                 }
                 response.code() == 422 -> RepoCreationResult.AlreadyExists(name)
@@ -137,36 +131,45 @@ class GitHubRepository(private val context: Context) {
     }
 
     /**
-     * Faz upload dos dois workflows AXEV para .github/workflows/ do repositório
-     * recém-criado, via GitHub Contents API.
-     * Erros são silenciosos — o repositório já foi criado com sucesso.
+     * Envia os workflows AXEV para .github/workflows/ do repositório indicado.
+     * Chamado pelo botão "Criar Ambiente de Trabalho" no ecrã de sucesso.
+     * Devolve true se pelo menos um workflow foi enviado com sucesso.
      */
-    private suspend fun injectWorkflows(bearer: String, owner: String, repo: String) {
+    suspend fun setupWorkspace(owner: String, repoName: String): Boolean {
+        val bearer = tokenManager.getBearerToken() ?: return false
+
+        // Aguarda 1 s para garantir que o branch main está inicializado
+        delay(1_000)
+
         val workflows = listOf(
             ".github/workflows/${WorkflowTemplates.WORKFLOW_GENERATE}" to
                 WorkflowTemplates.generateWorkflowBase64(),
             ".github/workflows/${WorkflowTemplates.WORKFLOW_SMOKE}" to
                 WorkflowTemplates.smokeWorkflowBase64()
         )
+
+        var anySuccess = false
         for ((path, content) in workflows) {
             try {
-                api.createFile(
+                val response = api.createFile(
                     token   = bearer,
                     owner   = owner,
-                    repo    = repo,
+                    repo    = repoName,
                     path    = path,
                     request = CreateFileRequest(
                         message = "chore: add AXEV workflow — ${path.substringAfterLast("/")}",
                         content = content
                     )
                 )
+                if (response.isSuccessful) anySuccess = true
             } catch (_: Exception) {
-                // Falha silenciosa — não bloqueia o fluxo de criação
+                // Continua para o próximo workflow
             }
         }
+        return anySuccess
     }
 
-    // ── Geração de personagem — envia TODOS os inputs para o workflow ──────────
+    // ── Geração de personagem ─────────────────────────────────────────────────
 
     suspend fun generateCharacter(
         token: String,
