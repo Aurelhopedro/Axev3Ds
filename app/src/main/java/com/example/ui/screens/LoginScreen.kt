@@ -1,23 +1,13 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,13 +23,22 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ui.AuthState
 import com.example.ui.MainViewModel
-import com.example.ui.components.TacticalButton
 import com.example.ui.components.TacticalCard
 
 @Composable
 fun LoginScreen(viewModel: MainViewModel) {
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
+
+    // Quando o estado passa a OpenBrowser, abrimos o browser e passamos para WaitingForCallback
+    LaunchedEffect(authState) {
+        if (authState is AuthState.OpenBrowser) {
+            val url = (authState as AuthState.OpenBrowser).authUrl
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+            viewModel.onBrowserOpened()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -49,7 +48,7 @@ fun LoginScreen(viewModel: MainViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // ── App Logo ──────────────────────────────────────────────────────────
+        // ── Logo ──────────────────────────────────────────────────────────────
         Image(
             painter = painterResource(id = R.drawable.ic_app_foreground_asset),
             contentDescription = "AXEV 3D Studio Logo",
@@ -68,10 +67,12 @@ fun LoginScreen(viewModel: MainViewModel) {
         )
         Spacer(modifier = Modifier.height(40.dp))
 
-        // ── State-based content ───────────────────────────────────────────────
+        // ── Estado ────────────────────────────────────────────────────────────
         when (val state = authState) {
 
-            is AuthState.Idle, is AuthState.Failed -> {
+            is AuthState.Idle,
+            is AuthState.OpenBrowser,
+            is AuthState.Failed -> {
                 GitHubSignInButton(
                     isLoading = false,
                     onClick = { viewModel.startGitHubAuth() }
@@ -98,7 +99,6 @@ fun LoginScreen(viewModel: MainViewModel) {
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
-                // Demo mode — visually distinct / labelled as test only
                 Divider(color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -118,21 +118,45 @@ fun LoginScreen(viewModel: MainViewModel) {
                 }
             }
 
+            is AuthState.WaitingForCallback -> {
+                TacticalCard {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Authorize in the browser",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "After clicking \"Authorize\" on GitHub,\nyou'll be automatically redirected back.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.LightGray,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        TextButton(onClick = { viewModel.cancelAuth() }) {
+                            Text("Cancel", color = Color.Gray)
+                        }
+                    }
+                }
+            }
+
+            is AuthState.Authenticated -> {
+                CircularProgressIndicator()
+                Text("Authenticated. Loading...", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            }
+
+            // ── Device Flow (legado — mantido caso seja necessário) ────────────
             is AuthState.RequestingCode -> {
                 GitHubSignInButton(isLoading = true, onClick = {})
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Requesting device code...", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             }
-
-            is AuthState.WaitingForUser -> {
-                DeviceAuthCard(
-                    userCode = state.userCode,
-                    verificationUri = state.verificationUri,
-                    onCancel = { viewModel.cancelAuth() },
-                    context = context
-                )
-            }
-
             is AuthState.Polling -> {
                 TacticalCard {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
@@ -146,12 +170,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-
-            is AuthState.Authenticated -> {
-                // Should navigate away; show loading fallback
-                CircularProgressIndicator()
-                Text("Authenticated. Loading...", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-            }
+            else -> { /* WaitingForUser do Device Flow — não usado no Web Flow */ }
         }
     }
 }
@@ -180,120 +199,9 @@ private fun GitHubSignInButton(isLoading: Boolean, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(12.dp))
             Text("Connecting...", fontWeight = FontWeight.SemiBold)
         } else {
-            // GitHub mark (using text as fallback — replace with actual logo drawable if available)
             Text("⬛", fontSize = 18.sp)
             Spacer(modifier = Modifier.width(10.dp))
             Text("Continue with GitHub", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
-    }
-}
-
-@Composable
-private fun DeviceAuthCard(
-    userCode: String,
-    verificationUri: String,
-    onCancel: () -> Unit,
-    context: Context
-) {
-    TacticalCard {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "Authorize on GitHub",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "1. Open github.com/login/device in your browser",
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                color = Color.LightGray
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "2. Enter this code:",
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                color = Color.LightGray
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // User code display
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = userCode,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 6.sp
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Open browser button
-            Button(
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri))
-                    context.startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292E))
-            ) {
-                Icon(Icons.Default.OpenInBrowser, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Open github.com/login/device")
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Copy code button
-            OutlinedButton(
-                onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("GitHub Code", userCode))
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Copy Code")
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Waiting for authorization...",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            TextButton(onClick = onCancel) {
-                Text("Cancel", color = Color.Gray)
-            }
         }
     }
 }
