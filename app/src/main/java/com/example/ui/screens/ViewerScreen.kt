@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -21,15 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.api.GeneratedFile
+import com.example.data.repository.GenerationRepository.DownloadStatus
 import com.example.data.repository.GenerationRepository.GenerationStatus
 import com.example.ui.MainViewModel
 import com.example.ui.theme.TacticalOrange
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ViewerScreen — "Magic Box"
-//
-// O utilizador vê: loading animado → ficheiros prontos → download.
-// Nenhuma referência a GitHub, workflows ou Actions é exibida.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -38,6 +37,7 @@ fun ViewerScreen(
     onBack: () -> Unit
 ) {
     val generationStatus by viewModel.generationStatus.collectAsState()
+    val downloadStates   by viewModel.downloadStates.collectAsState()
 
     Scaffold(
         topBar = {
@@ -64,19 +64,27 @@ fun ViewerScreen(
         ) {
             when (val status = generationStatus) {
                 is GenerationStatus.Preparing ->
-                    LoadingContent(message = status.message, progress = 0.05f)
+                    LoadingContent(message = status.message, progress = 0.05f, remainingSec = null)
 
                 is GenerationStatus.Processing ->
-                    LoadingContent(message = status.message, progress = status.progress)
+                    LoadingContent(
+                        message      = status.message,
+                        progress     = status.progress,
+                        remainingSec = status.estimatedSec.takeIf { it > 0 }
+                    )
 
                 is GenerationStatus.Ready ->
-                    ReadyContent(files = status.files, onRetry = { viewModel.retryGeneration() })
+                    ReadyContent(
+                        files          = status.files,
+                        downloadStates = downloadStates,
+                        onDownload     = { file -> viewModel.downloadFile(file) },
+                        onRetry        = { viewModel.retryGeneration() }
+                    )
 
                 is GenerationStatus.Failed ->
                     FailedContent(message = status.message, onRetry = { viewModel.retryGeneration() })
 
                 null ->
-                    // Estado inicial — ainda não disparou geração
                     IdleContent(onBack = onBack)
             }
         }
@@ -86,15 +94,13 @@ fun ViewerScreen(
 // ─── Loading ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LoadingContent(message: String, progress: Float) {
-    // Progresso animado — suave entre valores
+private fun LoadingContent(message: String, progress: Float, remainingSec: Int?) {
     val animatedProgress by animateFloatAsState(
-        targetValue = progress,
+        targetValue  = progress,
         animationSpec = tween(durationMillis = 600, easing = EaseInOutCubic),
-        label = "progress"
+        label        = "progress"
     )
 
-    // Pulse no ícone ⚡
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
         initialValue = 0.6f,
         targetValue  = 1f,
@@ -112,12 +118,7 @@ private fun LoadingContent(message: String, progress: Float) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // Ícone pulsante
-        Text(
-            text  = "⚡",
-            fontSize = 48.sp,
-            color = TacticalOrange.copy(alpha = pulse)
-        )
+        Text(text = "⚡", fontSize = 48.sp, color = TacticalOrange.copy(alpha = pulse))
 
         Text(
             text       = "Generating your character…",
@@ -126,17 +127,31 @@ private fun LoadingContent(message: String, progress: Float) {
             fontSize   = 18.sp
         )
 
-        // Barra de progresso principal
         ProgressBar(label = message, progress = animatedProgress)
 
-        // Barras secundárias decorativas (mostram sub-etapas de forma visual)
         SubStepBars(overallProgress = animatedProgress)
 
-        Text(
-            text     = "This may take a few minutes.",
-            color    = Color.Gray,
-            fontSize = 12.sp
-        )
+        // Fix 2 — mostrar tempo restante real quando disponível
+        if (remainingSec != null && remainingSec > 0) {
+            val minutes = remainingSec / 60
+            val seconds = remainingSec % 60
+            val timeText = when {
+                minutes > 0 -> "~$minutes min ${seconds}s remaining"
+                else        -> "~${seconds}s remaining"
+            }
+            Text(
+                text     = timeText,
+                color    = TacticalOrange.copy(alpha = 0.85f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        } else {
+            Text(
+                text     = "This may take a few minutes.",
+                color    = Color.Gray,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 
@@ -150,8 +165,8 @@ private fun ProgressBar(label: String, progress: Float) {
             Text(label, color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
             Text(
                 "${(progress * 100).toInt()}%",
-                color = TacticalOrange,
-                fontSize = 13.sp,
+                color      = TacticalOrange,
+                fontSize   = 13.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
             )
@@ -174,13 +189,12 @@ private fun ProgressBar(label: String, progress: Float) {
     }
 }
 
-// Sub-etapas visuais — simulam paralelismo (mesh, textures, export)
 @Composable
 private fun SubStepBars(overallProgress: Float) {
     val steps = listOf(
-        "Preparing mesh"       to 0.30f,
-        "Applying textures"    to 0.60f,
-        "Exporting GLB"        to 0.90f
+        "Preparing mesh"    to 0.30f,
+        "Applying textures" to 0.60f,
+        "Exporting GLB"     to 0.90f
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         steps.forEach { (name, threshold) ->
@@ -192,9 +206,9 @@ private fun SubStepBars(overallProgress: Float) {
             }.coerceIn(0f, 1f)
 
             val animated by animateFloatAsState(
-                targetValue  = stepProgress,
+                targetValue   = stepProgress,
                 animationSpec = tween(500),
-                label        = "sub_$name"
+                label         = "sub_$name"
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -224,7 +238,12 @@ private fun SubStepBars(overallProgress: Float) {
 // ─── Pronto ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ReadyContent(files: List<GeneratedFile>, onRetry: () -> Unit) {
+private fun ReadyContent(
+    files: List<GeneratedFile>,
+    downloadStates: Map<Long, DownloadStatus>,
+    onDownload: (GeneratedFile) -> Unit,
+    onRetry: () -> Unit
+) {
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -240,29 +259,33 @@ private fun ReadyContent(files: List<GeneratedFile>, onRetry: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "Your character is ready!",
-                    color = Color.White,
+                    color      = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    fontSize   = 20.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "${files.size} file${if (files.size != 1) "s" else ""} generated",
-                    color = Color.Gray,
+                    color    = Color.Gray,
                     fontSize = 13.sp
                 )
             }
         }
 
         items(files) { file ->
-            FileCard(file = file)
+            FileCard(
+                file           = file,
+                downloadStatus = downloadStates[file.artifactId],
+                onDownload     = { onDownload(file) }
+            )
         }
 
         item {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
-                onClick = onRetry,
+                onClick  = onRetry,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = TacticalOrange)
+                colors   = ButtonDefaults.outlinedButtonColors(contentColor = TacticalOrange)
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
@@ -272,53 +295,87 @@ private fun ReadyContent(files: List<GeneratedFile>, onRetry: () -> Unit) {
     }
 }
 
+// Fix 3 — FileCard com lógica de download real
 @Composable
-private fun FileCard(file: GeneratedFile) {
+private fun FileCard(
+    file: GeneratedFile,
+    downloadStatus: DownloadStatus?,
+    onDownload: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-        shape  = RoundedCornerShape(12.dp)
+        colors   = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        shape    = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Info do ficheiro
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
+                modifier              = Modifier.weight(1f)
             ) {
                 Text(file.icon, fontSize = 28.sp)
                 Column {
                     Text(
                         file.name,
-                        color = Color.White,
+                        color      = Color.White,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
+                        fontSize   = 14.sp
                     )
                     Text(
                         file.sizeMb,
-                        color = Color.Gray,
+                        color    = Color.Gray,
                         fontSize = 12.sp
                     )
+                    // Feedback de estado do download
+                    when (downloadStatus) {
+                        is DownloadStatus.Downloading ->
+                            Text("Downloading…", color = TacticalOrange, fontSize = 11.sp)
+                        is DownloadStatus.Done ->
+                            Text("✓ Saved to Downloads", color = Color(0xFF4CAF50), fontSize = 11.sp)
+                        is DownloadStatus.Failed ->
+                            Text("⚠ ${downloadStatus.message}", color = Color(0xFFFF6B6B), fontSize = 11.sp)
+                        null -> Unit
+                    }
                 }
             }
 
-            // Botão de download — abre o URL do artifact
-            FilledIconButton(
-                onClick = { /* Handled via ViewModel / intent no futuro */ },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = TacticalOrange
-                )
-            ) {
-                Icon(
-                    Icons.Default.Download,
-                    contentDescription = "Download ${file.name}",
-                    tint = Color.Black
-                )
+            // Botão de download — estados: idle / a transferir / concluído / erro
+            when (downloadStatus) {
+                is DownloadStatus.Downloading -> {
+                    CircularProgressIndicator(
+                        modifier  = Modifier.size(36.dp),
+                        color     = TacticalOrange,
+                        strokeWidth = 3.dp
+                    )
+                }
+                is DownloadStatus.Done -> {
+                    FilledIconButton(
+                        onClick = { /* já descarregado */ },
+                        colors  = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color(0xFF4CAF50)
+                        )
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = "Downloaded", tint = Color.Black)
+                    }
+                }
+                else -> {
+                    // idle ou erro — mostrar botão de download
+                    FilledIconButton(
+                        onClick = onDownload,
+                        colors  = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = TacticalOrange
+                        )
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "Download ${file.name}", tint = Color.Black)
+                    }
+                }
             }
         }
     }
@@ -334,15 +391,10 @@ private fun FailedContent(message: String, onRetry: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("⚠️", fontSize = 48.sp)
-        Text(
-            message,
-            color = Color(0xFFFF6B6B),
-            fontWeight = FontWeight.Medium,
-            fontSize = 15.sp
-        )
+        Text(message, color = Color(0xFFFF6B6B), fontWeight = FontWeight.Medium, fontSize = 15.sp)
         Button(
             onClick = onRetry,
-            colors = ButtonDefaults.buttonColors(containerColor = TacticalOrange)
+            colors  = ButtonDefaults.buttonColors(containerColor = TacticalOrange)
         ) {
             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(8.dp))
@@ -351,7 +403,7 @@ private fun FailedContent(message: String, onRetry: () -> Unit) {
     }
 }
 
-// ─── Estado inicial (antes de gerar) ─────────────────────────────────────────
+// ─── Estado inicial ───────────────────────────────────────────────────────────
 
 @Composable
 private fun IdleContent(onBack: () -> Unit) {
@@ -361,11 +413,7 @@ private fun IdleContent(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("🎭", fontSize = 48.sp)
-        Text(
-            "No generation in progress.",
-            color = Color.Gray,
-            fontSize = 15.sp
-        )
+        Text("No generation in progress.", color = Color.Gray, fontSize = 15.sp)
         OutlinedButton(onClick = onBack) {
             Text("Go back to Creator", color = TacticalOrange)
         }
