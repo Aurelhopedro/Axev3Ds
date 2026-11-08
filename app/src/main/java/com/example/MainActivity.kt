@@ -8,6 +8,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -41,6 +42,27 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val authState by viewModel.authState.collectAsState()
                 val selectedRepo by viewModel.selectedRepo.collectAsState()
+
+                // Navegação reativa — sempre que authState ou selectedRepo mudam, navega
+                LaunchedEffect(authState, selectedRepo) {
+                    when {
+                        authState !is AuthState.Authenticated -> {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                        selectedRepo == null -> {
+                            navController.navigate(Screen.RepoSelection.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                        else -> {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    }
+                }
 
                 val startDestination = when {
                     authState !is AuthState.Authenticated -> Screen.Login.route
