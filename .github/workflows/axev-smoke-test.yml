@@ -1,0 +1,423 @@
+name: AXEV 3D — Smoke Test
+
+# Corre automaticamente sempre que o workflow principal é alterado
+# Também pode ser disparado manualmente
+on:
+  push:
+    paths:
+      - '.github/workflows/ara-axev-crime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MATRIZ DE TESTE — 6 combinações representativas que cobrem todos os
+  # caminhos críticos: género, roupa separada, sem roupa, formatos,
+  # armas, rig, qualidade, skin tone
+  # ══════════════════════════════════════════════════════════════════════════
+  smoke:
+    name: "[${{ matrix.id }}] ${{ matrix.label }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true  # cada caso corre independentemente
+
+    strategy:
+      fail-fast: false  # todos os casos correm mesmo que um falhe
+      matrix:
+        include:
+
+          # CASO 1 — Guerreiro africano masculino, GLB, animações, A-pose
+          - id: "TC01"
+            label: "Guerreiro Africano — GLB + animações"
+            character_id: "smoke_tc01"
+            character_name: "Smoke TC01"
+            preset: "The African Warrior"
+            gender_age: "male:30"
+            body: "muscular:average:tall"
+            skin_tone: "african"
+            hair: "buzz:black"
+            facial_hair: "short_beard"
+            eyes: "darkbrown"
+            outfit: "preset_default"
+            shoes_hat: "combat_boots:none"
+            weapon: "none"
+            expression: "determined"
+            rig_anim: "game:yes:A"
+            quality: "high"
+            export_formats: "glb"
+
+          # CASO 2 — Executiva feminina asiática, FBX, sem animações, T-pose
+          - id: "TC02"
+            label: "Executiva Asiática — FBX sem animações"
+            character_id: "smoke_tc02"
+            character_name: "Smoke TC02"
+            preset: "The Female Executive"
+            gender_age: "female:35"
+            body: "slim:slim:average"
+            skin_tone: "asian"
+            hair: "bob02:black"
+            facial_hair: "none"
+            eyes: "brown"
+            outfit: "female_elegantsuit01"
+            shoes_hat: "heels:none"
+            weapon: "none"
+            expression: "neutral"
+            rig_anim: "game:no:T"
+            quality: "medium"
+            export_formats: "fbx"
+
+          # CASO 3 — Personagem andrógino, OBJ, sem roupa, sem rig
+          - id: "TC03"
+            label: "Andrógino sem roupa — OBJ"
+            character_id: "smoke_tc03"
+            character_name: "Smoke TC03"
+            preset: "Athletic man"
+            gender_age: "androgynous:25"
+            body: "athletic:slim:average"
+            skin_tone: "mixed"
+            hair: "short02:brown"
+            facial_hair: "none"
+            eyes: "green"
+            outfit: "none"
+            shoes_hat: "none:none"
+            weapon: "none"
+            expression: "neutral"
+            rig_anim: "none:no:A"
+            quality: "low"
+            export_formats: "obj"
+
+          # CASO 4 — Elder caucasiano, ZIP com todos os formatos
+          - id: "TC04"
+            label: "Elder Caucasiano — ZIP todos formatos"
+            character_id: "smoke_tc04"
+            character_name: "Smoke TC04"
+            preset: "Elder"
+            gender_age: "male:70"
+            body: "medium:heavy:average"
+            skin_tone: "caucasian"
+            hair: "short02:grey"
+            facial_hair: "full_beard"
+            eyes: "grey"
+            outfit: "set_clergy"
+            shoes_hat: "shoes01:none"
+            weapon: "none"
+            expression: "sad"
+            rig_anim: "full:yes:T"
+            quality: "high"
+            export_formats: "zip"
+
+          # CASO 5 — Agente secreto com arma + roupa separada (top+bottom), GLB+FBX
+          - id: "TC05"
+            label: "Agente Secreto com arma — GLB+FBX"
+            character_id: "smoke_tc05"
+            character_name: "Smoke TC05"
+            preset: "The Secret Agent"
+            gender_age: "male:40"
+            body: "athletic:average:tall"
+            skin_tone: "dark"
+            hair: "short02:black"
+            facial_hair: "stubble"
+            eyes: "blackbrown"
+            outfit: "fatigue_shirt+fatigue_pants"
+            shoes_hat: "combat_boots:beret"
+            weapon: "pistol"
+            expression: "determined"
+            rig_anim: "game:yes:A"
+            quality: "high"
+            export_formats: "glb,fbx"
+
+          # CASO 6 — Jovem feminina, cabelo longo, game_lite, GLB
+          - id: "TC06"
+            label: "Jovem Feminina — game_lite GLB"
+            character_id: "smoke_tc06"
+            character_name: "Smoke TC06"
+            preset: "The Beach Girl"
+            gender_age: "female:18"
+            body: "slim:very slim:short"
+            skin_tone: "light"
+            hair: "long01:blonde"
+            facial_hair: "none"
+            eyes: "lightblue"
+            outfit: "female_sportsuit01"
+            shoes_hat: "sneakers:none"
+            weapon: "none"
+            expression: "happy"
+            rig_anim: "game_lite:yes:A"
+            quality: "medium"
+            export_formats: "glb"
+
+    steps:
+      # ─── VALIDAR INPUTS ───────────────────────────────────────────────────
+      - name: Validar inputs do caso ${{ matrix.id }}
+        env:
+          INPUT_FORMATS: ${{ matrix.export_formats }}
+          INPUT_ID:      ${{ matrix.character_id }}
+        run: |
+          set -euo pipefail
+          if ! echo "$INPUT_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
+            echo "::error::character_id inválido: '$INPUT_ID'"
+            exit 1
+          fi
+          ALLOWED="glb fbx obj zip"
+          IFS=',' read -ra FMTS <<< "$INPUT_FORMATS"
+          for fmt in "${FMTS[@]}"; do
+            fmt_clean=$(echo "$fmt" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            if ! echo "$ALLOWED" | grep -qw "$fmt_clean"; then
+              echo "::error::Formato não suportado: '$fmt_clean'"
+              exit 1
+            fi
+          done
+          FORMATS_NORM=$(echo "$INPUT_FORMATS" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+          echo "FORMATS_NORM=$FORMATS_NORM" >> "$GITHUB_ENV"
+          echo "✅ [${{ matrix.id }}] Inputs validados."
+
+      # ─── CHECKOUT ─────────────────────────────────────────────────────────
+      - name: Checkout AXEV
+        uses: actions/checkout@v4
+
+      # ─── NODE.JS ──────────────────────────────────────────────────────────
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ─── CLONAR MOTOR ─────────────────────────────────────────────────────
+      - name: Clonar Ara 3D Gen
+        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+
+      # ─── DEPENDÊNCIAS ─────────────────────────────────────────────────────
+      - name: Instalar dependências
+        working-directory: ara-3d-gen
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      # ─── CACHE ASSETS ─────────────────────────────────────────────────────
+      - name: Cache assets MakeHuman
+        id: cache-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ara-3d-gen/vendor
+            ara-3d-gen/public/assets
+          key: ara3d-assets-v1-${{ hashFiles('ara-3d-gen/scripts/setup-assets.ts', 'ara-3d-gen/scripts/mocap-takes.ts') }}
+          restore-keys: ara3d-assets-v1-
+
+      - name: Preparar assets 3D
+        working-directory: ara-3d-gen
+        run: |
+          if [ "${{ steps.cache-assets.outputs.cache-hit }}" != "true" ] || [ ! -d "vendor/sys/skins" ]; then
+            echo "A descarregar assets MakeHuman (~280 MB)..."
+            npm run setup-assets
+          else
+            echo "✅ Assets em cache."
+          fi
+
+      # ─── CONSTRUIR PARÂMETROS ─────────────────────────────────────────────
+      - name: Construir parâmetros [${{ matrix.id }}]
+        env:
+          INPUT_PRESET:      ${{ matrix.preset }}
+          INPUT_NAME:        ${{ matrix.character_name }}
+          INPUT_GENDER_AGE:  ${{ matrix.gender_age }}
+          INPUT_BODY:        ${{ matrix.body }}
+          INPUT_SKIN:        ${{ matrix.skin_tone }}
+          INPUT_HAIR:        ${{ matrix.hair }}
+          INPUT_FACIAL_HAIR: ${{ matrix.facial_hair }}
+          INPUT_EYES:        ${{ matrix.eyes }}
+          INPUT_OUTFIT:      ${{ matrix.outfit }}
+          INPUT_SHOES_HAT:   ${{ matrix.shoes_hat }}
+          INPUT_WEAPON:      ${{ matrix.weapon }}
+          INPUT_EXPRESSION:  ${{ matrix.expression }}
+          INPUT_RIG_ANIM:    ${{ matrix.rig_anim }}
+          INPUT_QUALITY:     ${{ matrix.quality }}
+        run: |
+          mkdir -p axev-build
+          python3 << 'PYEOF'
+          import json, os
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          preset = env("INPUT_PRESET", "Athletic man")
+          params = {
+            "name": env("INPUT_NAME", preset) or preset,
+            "detail": env("INPUT_QUALITY", "high").lower(),
+          }
+
+          ga = env("INPUT_GENDER_AGE", "male:25").split(":")
+          gender_str = ga[0] if len(ga) > 0 else "male"
+          age_str    = ga[1] if len(ga) > 1 else "25"
+          params["gender"] = 0.0 if gender_str == "female" else (0.5 if gender_str == "androgynous" else 1.0)
+          try:
+            y = max(12, min(90, int(age_str)))
+            params["age"] = round(0.5 + ((y-25)/65)*0.5 if y >= 25 else 0.1875 + ((y-11)/14)*0.3125 if y >= 11 else (y/11)*0.1875, 4)
+          except: pass
+
+          muscle_map = {"none":0.1,"slim":0.3,"medium":0.5,"athletic":0.7,"muscular":0.85,"very muscular":1.0}
+          weight_map = {"very slim":0.15,"slim":0.3,"average":0.5,"heavy":0.7,"very heavy":0.9}
+          height_map = {"very short":0.1,"short":0.3,"average":0.5,"tall":0.7,"very tall":0.9}
+          body_parts = env("INPUT_BODY", "medium:average:average").split(":")
+          if len(body_parts) >= 1: params["muscle"] = muscle_map.get(body_parts[0], 0.5)
+          if len(body_parts) >= 2: params["weight"] = weight_map.get(body_parts[1], 0.5)
+          if len(body_parts) >= 3: params["height"] = height_map.get(body_parts[2], 0.5)
+
+          skin_map = {
+            "very light":{"african":0.0,"asian":0.05,"caucasian":0.95},
+            "light":     {"african":0.0,"asian":0.1, "caucasian":0.9},
+            "mixed":     {"african":0.3,"asian":0.2, "caucasian":0.5},
+            "dark":      {"african":0.7,"asian":0.1, "caucasian":0.2},
+            "very dark": {"african":0.9,"asian":0.05,"caucasian":0.05},
+            "african":   {"african":1.0,"asian":0.0, "caucasian":0.0},
+            "asian":     {"african":0.0,"asian":1.0, "caucasian":0.0},
+            "caucasian": {"african":0.0,"asian":0.0, "caucasian":1.0},
+          }
+          params.update(skin_map.get(env("INPUT_SKIN","mixed"), {"african":0.3,"asian":0.2,"caucasian":0.5}))
+
+          hair_parts = env("INPUT_HAIR","short02:black").split(":")
+          hair_style = hair_parts[0] if len(hair_parts) > 0 else "short02"
+          hair_color = hair_parts[1] if len(hair_parts) > 1 else "black"
+          if hair_style != "preset_default": params["hair"] = hair_style
+          color_map = {"black":"#15100c","dark brown":"#241a13","brown":"#3b2a1d","blonde":"#c8a86b",
+                       "red":"#7a2e14","grey":"#6a6060","white":"#c8c0b4","purple":"#4a1a6a","blue":"#1a2a6a","pink":"#c060a0"}
+          hc = color_map.get(hair_color)
+          if hc: params["hairColor"] = hc
+
+          fh = env("INPUT_FACIAL_HAIR","none")
+          if fh != "preset_default": params["facialHair"] = fh
+
+          params["eyes"] = env("INPUT_EYES","brown")
+          params["expression"] = env("INPUT_EXPRESSION","neutral")
+
+          w = env("INPUT_WEAPON","none")
+          if w not in ("preset_default",""): params["weapon"] = w
+
+          outfit = env("INPUT_OUTFIT","preset_default")
+          if outfit == "preset_default":
+            pass
+          elif "+" in outfit:
+            top, bottom = outfit.split("+", 1)
+            params["outfit"] = "none"
+            params["top"] = top
+            params["bottom"] = bottom
+          elif outfit == "none":
+            params["outfit"] = "none"
+          else:
+            params["outfit"] = outfit
+
+          sh = env("INPUT_SHOES_HAT","preset_default:none").split(":")
+          shoes = sh[0] if len(sh) > 0 else "preset_default"
+          hat   = sh[1] if len(sh) > 1 else "none"
+          if shoes not in ("preset_default",""): params["shoes"] = shoes
+          if hat   not in ("preset_default",""): params["hat"] = hat
+
+          ra = env("INPUT_RIG_ANIM","game:yes:A").split(":")
+          params["rig"]        = ra[0] if len(ra) > 0 else "game"
+          params["animations"] = (ra[1] if len(ra) > 1 else "yes") == "yes"
+          params["restPose"]   = ra[2] if len(ra) > 2 else "A"
+          params["faceShapes"]   = True
+          params["speechShapes"] = True
+          params["faceBones"]    = True
+
+          with open("axev-build/character_overrides.json","w") as f:
+            json.dump(params, f, indent=2)
+          print("✅ Parâmetros prontos:")
+          print(json.dumps(params, indent=2))
+          PYEOF
+
+      # ─── GERAR PERSONAGEM ─────────────────────────────────────────────────
+      - name: Gerar personagem [${{ matrix.id }}]
+        working-directory: ara-3d-gen
+        env:
+          FORMATS_NORM:    ${{ env.FORMATS_NORM }}
+          RESOLVED_PRESET: ${{ matrix.preset }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+
+          cat > /tmp/merge-params.ts << 'TSEOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { DEFAULT_PARAMS, PRESETS } from './src/core/params';
+
+          const presetName = process.env.RESOLVED_PRESET ?? 'Athletic man';
+          const preset = (PRESETS as Record<string, object>)[presetName] ?? {};
+          const overrides = JSON.parse(readFileSync('../axev-build/character_overrides.json', 'utf8'));
+          const final = { ...DEFAULT_PARAMS, ...preset, ...overrides };
+          writeFileSync('../axev-build/character.params.json', JSON.stringify(final, null, 2));
+          console.log(`✅ Preset "${presetName}" + ${Object.keys(overrides).length} overrides combinados.`);
+          TSEOF
+
+          npx tsx /tmp/merge-params.ts
+
+          echo "A gerar com formatos: $FORMATS_NORM"
+          npm run export -- \
+            --params "../axev-build/character.params.json" \
+            --formats "$FORMATS_NORM" \
+            --out out
+
+          echo "✅ Geração concluída."
+          find out -type f -printf '  %p (%s bytes)\n'
+
+      # ─── VALIDAR SAÍDA ────────────────────────────────────────────────────
+      - name: Validar ficheiros exportados [${{ matrix.id }}]
+        env:
+          FORMATS_NORM: ${{ env.FORMATS_NORM }}
+        run: |
+          set -euo pipefail
+          OUT="ara-3d-gen/out"
+          if [ ! -d "$OUT" ] || [ -z "$(find "$OUT" -type f -print -quit)" ]; then
+            echo "::error::[${{ matrix.id }}] Nenhum ficheiro exportado."
+            exit 1
+          fi
+          IFS=',' read -ra FMTS <<< "$FORMATS_NORM"
+          for fmt in "${FMTS[@]}"; do
+            fmt=$(echo "$fmt" | tr -d '[:space:]')
+            FILES=$(find "$OUT" -name "*.${fmt}" -type f 2>/dev/null)
+            if [ -z "$FILES" ]; then
+              echo "::error::[${{ matrix.id }}] Formato $fmt não produzido."
+              exit 1
+            fi
+            for f in $FILES; do
+              SIZE=$(stat -c%s "$f")
+              echo "✅ [${{ matrix.id }}] $fmt: $f ($(( SIZE / 1024 )) KB)"
+            done
+          done
+          echo "✅ [${{ matrix.id }}] Todos os formatos validados."
+
+      # ─── ARTEFACTO DO CASO ────────────────────────────────────────────────
+      - name: Publicar artefacto [${{ matrix.id }}]
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.id }}-${{ matrix.character_id }}
+          path: |
+            ara-3d-gen/out/
+            axev-build/character.params.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # RELATÓRIO FINAL — corre depois de todos os casos e mostra resumo
+  # ══════════════════════════════════════════════════════════════════════════
+  report:
+    name: "Relatório do Smoke Test"
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: always()
+
+    steps:
+      - name: Resumo dos resultados
+        run: |
+          echo "## 🧪 AXEV Smoke Test — Resumo" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Caso | Descrição | Resultado |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----------|-----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TC01 | Guerreiro Africano — GLB + animações | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC02 | Executiva Asiática — FBX sem animações | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC03 | Andrógino sem roupa — OBJ | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC04 | Elder Caucasiano — ZIP todos formatos | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC05 | Agente Secreto com arma — GLB+FBX | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC06 | Jovem Feminina — game_lite GLB | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Se todos os 6 casos passarem, qualquer combinação de personagem funcionará." >> $GITHUB_STEP_SUMMARY
+          echo "🧪 Smoke test concluído."
