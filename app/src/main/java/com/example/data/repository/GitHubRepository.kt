@@ -8,6 +8,9 @@ import com.example.data.api.GitHubUser
 import com.example.data.api.WorkflowDispatchWithInputs
 import com.example.data.api.WorkflowRun
 import com.example.data.auth.AuthTokenManager
+import com.example.data.github.RepositorySetupService
+import com.example.data.github.SetupResult
+import com.example.data.github.WorkflowTemplates
 import com.example.data.models.CharacterConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -39,12 +42,12 @@ class GitHubRepository(private val context: Context) {
             .create(GitHubApi::class.java)
     }
 
+    private val setupService: RepositorySetupService by lazy {
+        RepositorySetupService(api)
+    }
+
     // ── Compatibility flows for MainViewModel ─────────────────────────────────
 
-    /**
-     * Wraps AuthTokenManager into a Flow for backwards compatibility.
-     * Emits the saved bearer token (or null) once on collection.
-     */
     val tokenFlow: Flow<String?> = MutableStateFlow(tokenManager.getBearerToken()).asStateFlow()
 
     val selectedRepoFlow: Flow<String?> = MutableStateFlow(tokenManager.getSelectedRepo()).asStateFlow()
@@ -66,7 +69,7 @@ class GitHubRepository(private val context: Context) {
     // ── API calls ─────────────────────────────────────────────────────────────
 
     suspend fun getUser(token: String): GitHubUser? {
-        val bearer = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        val bearer = token.asBearerToken()
         return try {
             val response = api.getUser(bearer)
             if (response.isSuccessful) response.body() else null
@@ -76,7 +79,7 @@ class GitHubRepository(private val context: Context) {
     }
 
     suspend fun getRepos(token: String): List<GitHubRepo> {
-        val bearer = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        val bearer = token.asBearerToken()
         return try {
             val response = api.getRepos(bearer)
             if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
@@ -86,8 +89,23 @@ class GitHubRepository(private val context: Context) {
     }
 
     /**
-     * Creates a public repository in the authenticated user's account.
-     * Returns RepoCreationResult to distinguish success, duplicate, and errors.
+     * Cria um repositório público e injicta os dois workflows AXEV.
+     * Delega toda a lógica de bootstrap para [RepositorySetupService].
+     *
+     * @return [SetupResult.Success] ou [SetupResult.AlreadyExisted] em caso de êxito;
+     *         [SetupResult.Error] com o passo e mensagem em caso de falha.
+     */
+    suspend fun setupRepository(): SetupResult {
+        val bearer = tokenManager.getBearerToken()
+            ?: return SetupResult.Error("auth", "Não autenticado")
+        val user = getUser(bearer)
+            ?: return SetupResult.Error("auth", "Não foi possível obter o utilizador")
+        return setupService.setupRepository(bearer, user.login)
+    }
+
+    /**
+     * Cria apenas o repositório (sem injectar workflows).
+     * Mantido para compatibilidade com código existente.
      */
     suspend fun createRepository(
         name: String,
@@ -130,20 +148,46 @@ class GitHubRepository(private val context: Context) {
         if (parts.size != 2) return false
         val owner = parts[0]
         val repo = parts[1]
-        val bearer = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        val bearer = token.asBearerToken()
 
         val inputs = mapOf(
-            "character_id" to config.id,
+            "character_id"   to config.id,
             "character_name" to config.name,
-            "preset" to config.identity.category,
-            "quality" to config.style.quality,
+            "preset"         to config.identity.category,
+            "quality"        to config.style.quality,
             "export_formats" to config.export.formats.joinToString(","),
-            "config_json" to moshi.adapter(CharacterConfig::class.java).toJson(config)
+            "config_json"    to moshi.adapter(CharacterConfig::class.java).toJson(config)
         )
 
         val request = WorkflowDispatchWithInputs(ref = "main", inputs = inputs)
         return try {
-            val response = api.dispatchWorkflow(bearer, owner, repo, "ara-axev-crime.yml", request)
+            val response = api.dispatchWorkflow(
+                bearer, owner, repo,
+                WorkflowTemplates.WORKFLOW_GENERATE,   // "ara-axev-crime.yml"
+                request
+            )
+            response.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Dispara o smoke test manualmente.
+     * Usa o repositório seleccionado na sessão actual.
+     */
+    suspend fun runSmokeTest(repoFullName: String): Boolean {
+        val bearer = tokenManager.getBearerToken() ?: return false
+        val parts = repoFullName.split("/")
+        if (parts.size != 2) return false
+        return try {
+            val response = api.dispatchWorkflow(
+                token      = bearer,
+                owner      = parts[0],
+                repo       = parts[1],
+                workflowId = WorkflowTemplates.WORKFLOW_SMOKE,  // "axev-smoke-test.yml"
+                request    = WorkflowDispatchWithInputs(ref = "main", inputs = emptyMap())
+            )
             response.isSuccessful
         } catch (e: Exception) {
             false
@@ -153,7 +197,7 @@ class GitHubRepository(private val context: Context) {
     suspend fun getWorkflowRuns(token: String, repoFullName: String): List<WorkflowRun> {
         val parts = repoFullName.split("/")
         if (parts.size != 2) return emptyList()
-        val bearer = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        val bearer = token.asBearerToken()
         return try {
             val response = api.getWorkflowRuns(bearer, parts[0], parts[1])
             if (response.isSuccessful) response.body()?.workflow_runs ?: emptyList() else emptyList()
@@ -161,4 +205,9 @@ class GitHubRepository(private val context: Context) {
             emptyList()
         }
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun String.asBearerToken() =
+        if (startsWith("Bearer ")) this else "Bearer $this"
 }
