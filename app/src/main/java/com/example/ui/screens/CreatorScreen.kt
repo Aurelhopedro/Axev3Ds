@@ -26,7 +26,11 @@ import com.example.ui.theme.TacticalOrange
 // ─── Ecrã principal do criador ────────────────────────────────────────────────
 
 @Composable
-fun CreatorScreen(viewModel: MainViewModel) {
+fun CreatorScreen(
+    viewModel: MainViewModel,
+    onGenerate: () -> Unit = {},   // chamado no passo 6 quando o utilizador confirma
+    onBack: () -> Unit = {}        // volta ao Dashboard
+) {
     var currentStep by remember { mutableStateOf(1) }
     val character by viewModel.currentCharacter.collectAsState()
     val uiState   by viewModel.uiState.collectAsState()
@@ -35,6 +39,27 @@ fun CreatorScreen(viewModel: MainViewModel) {
     val opts by viewModel.workflowOptions.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
+
+        // Cabeçalho com botão de voltar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = {
+                if (currentStep > 1) currentStep-- else onBack()
+            }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            Text(
+                text = "Create Character",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+
         StepperHeader(currentStep = currentStep)
 
         Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
@@ -50,13 +75,13 @@ fun CreatorScreen(viewModel: MainViewModel) {
                         { viewModel.updateCharacter(it) }
                 5 -> ExportStep(character, opts.exportFormats)
                         { viewModel.updateCharacter(it) }
-                6 -> ReviewStep(character, uiState) { viewModel.generate() }
+                6 -> ReviewStep(character, uiState, onDispatch = onGenerate)
             }
         }
 
         NavigationFooter(
             currentStep = currentStep,
-            onBack = { if (currentStep > 1) currentStep-- },
+            onBack = { if (currentStep > 1) currentStep-- else onBack() },
             onNext = { if (currentStep < 6) currentStep++ }
         )
     }
@@ -67,7 +92,7 @@ fun CreatorScreen(viewModel: MainViewModel) {
 @Composable
 fun StepperHeader(currentStep: Int) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -116,7 +141,7 @@ fun WorkflowDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
         Spacer(modifier = Modifier.height(4.dp))
         Box {
             OutlinedButton(
@@ -147,11 +172,14 @@ fun IdentityStep(
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Character Identity")
         TacticalCard {
-            Text("NAME", style = MaterialTheme.typography.labelSmall)
+            Text("NAME", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value         = config.name,
                 onValueChange = { onUpdate(config.copy(name = it)) },
-                modifier      = Modifier.fillMaxWidth()
+                modifier      = Modifier.fillMaxWidth(),
+                singleLine    = true,
+                placeholder   = { Text("ex: AXEV Soldier") }
             )
             WorkflowDropdown("PRESET", config.preset, presets)
                 { onUpdate(config.copy(preset = it)) }
@@ -287,13 +315,8 @@ fun ReviewStep(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Dispatching workflow…")
+                        Text("Starting generation…", color = Color.Gray)
                     }
-                }
-                is UiState.Success -> {
-                    Text("✅ ${uiState.message}", color = Color.Green, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TacticalButton(text = "Generate Again", onClick = onDispatch)
                 }
                 is UiState.Error -> {
                     Text("❌ ${uiState.message}", color = MaterialTheme.colorScheme.error)
@@ -327,14 +350,10 @@ fun NavigationFooter(currentStep: Int, onBack: () -> Unit, onNext: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        if (currentStep > 1) {
-            OutlinedButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("BACK")
-            }
-        } else {
-            Spacer(modifier = Modifier.width(1.dp))
+        OutlinedButton(onClick = onBack) {
+            Icon(Icons.Default.ArrowBack, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("BACK")
         }
         if (currentStep < 6) {
             Button(
