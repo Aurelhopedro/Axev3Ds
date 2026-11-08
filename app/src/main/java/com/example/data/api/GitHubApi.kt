@@ -47,6 +47,23 @@ interface GitHubApi {
         @Body request: CreateRepoRequest
     ): Response<GitHubRepo>
 
+    // ── Contents (bootstrap de ficheiros) ────────────────────────────────────
+
+    /**
+     * Cria ou substitui um ficheiro num repositório via GitHub Contents API.
+     * [path] é relativo à raiz do repo (ex: ".github/workflows/smoke.yml").
+     * [request.content] deve estar em Base64 (NO_WRAP).
+     * [request.sha] é obrigatório apenas para actualizar um ficheiro existente.
+     */
+    @PUT("repos/{owner}/{repo}/contents/{path}")
+    suspend fun createFile(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "path", encoded = true) path: String,
+        @Body request: CreateFileRequest
+    ): Response<CreateFileResponse>
+
     // ── Workflows ─────────────────────────────────────────────────────────────
 
     @POST("repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches")
@@ -103,6 +120,33 @@ data class CreateRepoRequest(
     val description: String,
     val private: Boolean = false,
     val auto_init: Boolean = true
+)
+
+// ── Contents Models ───────────────────────────────────────────────────────────
+
+@JsonClass(generateAdapter = true)
+data class CreateFileRequest(
+    /** Mensagem do commit. */
+    val message: String,
+    /** Conteúdo do ficheiro em Base64 (Base64.NO_WRAP). */
+    val content: String,
+    /** SHA do ficheiro existente — obrigatório para substituir, omitir para criar. */
+    val sha: String? = null,
+    /** Branch de destino (default: "main"). */
+    val branch: String = "main"
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateFileResponse(
+    val content: FileContentMeta? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class FileContentMeta(
+    val name: String,
+    val path: String,
+    val sha: String,
+    val html_url: String = ""
 )
 
 // ── Core Models ───────────────────────────────────────────────────────────────
