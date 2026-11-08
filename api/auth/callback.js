@@ -36,7 +36,6 @@ export default async function handler(req, res) {
       body,
     });
 
-    // Ler resposta como texto puro primeiro para ver o que o GitHub realmente devolve
     const rawText = await tokenRes.text();
     let data;
     try {
@@ -56,7 +55,38 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.redirect(302, `axev3d://callback?token=${data.access_token}`);
+    const token = data.access_token;
+    const deepLink = `axev3d://callback?token=${token}`;
+
+    // Página HTML que faz o redirect para o deep link da app Android.
+    // Um HTTP 302 não funciona com custom schemes — o browser precisa de JS para isso.
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(200).send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AXEV 3D Studio — Autenticando...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; background: #0d1117; color: #c9d1d9;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; height: 100vh; margin: 0; }
+    h2 { font-size: 1.2rem; }
+    p  { color: #8b949e; font-size: 0.9rem; text-align: center; padding: 0 20px; }
+  </style>
+</head>
+<body>
+  <h2>✅ Autenticação concluída</h2>
+  <p>A redirecionar para a app AXEV 3D Studio...</p>
+  <script>
+    window.location.href = "${deepLink}";
+    setTimeout(function() {
+      document.querySelector('p').textContent =
+        'Se a app não abriu automaticamente, abre a app AXEV 3D Studio manualmente.';
+    }, 2000);
+  </script>
+</body>
+</html>`);
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
