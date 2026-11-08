@@ -64,6 +64,13 @@ sealed class SmokeTestState {
     data class Failed(val message: String) : SmokeTestState()
 }
 
+sealed class WorkspaceSetupState {
+    object Idle : WorkspaceSetupState()
+    object Setting : WorkspaceSetupState()
+    object Done : WorkspaceSetupState()
+    data class Failed(val message: String) : WorkspaceSetupState()
+}
+
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -91,6 +98,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _smokeTestState = MutableStateFlow<SmokeTestState>(SmokeTestState.Idle)
     val smokeTestState: StateFlow<SmokeTestState> = _smokeTestState.asStateFlow()
 
+    private val _workspaceSetupState = MutableStateFlow<WorkspaceSetupState>(WorkspaceSetupState.Idle)
+    val workspaceSetupState: StateFlow<WorkspaceSetupState> = _workspaceSetupState.asStateFlow()
+
     private val _user = MutableStateFlow<GitHubUser?>(null)
     val user: StateFlow<GitHubUser?> = _user.asStateFlow()
 
@@ -108,11 +118,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val workflowOptions: StateFlow<DynamicWorkflowOptions> = _workflowOptions.asStateFlow()
 
     // ── Magic Box — estado de geração exposto ao ViewerScreen ─────────────────
-    // null = sem geração activa; GenerationStatus.* = em curso / pronto / erro
     private val _generationStatus = MutableStateFlow<GenerationStatus?>(null)
     val generationStatus: StateFlow<GenerationStatus?> = _generationStatus.asStateFlow()
 
-    // Guardamos o timestamp do último dispatch para o polling saber onde começar
     private var lastDispatchedAt: Long = 0L
 
     private var pollingJob:    Job? = null
@@ -256,6 +264,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetRepoCreationState() {
         _repoCreationState.value = RepoCreationState.Idle
+        _workspaceSetupState.value = WorkspaceSetupState.Idle
+    }
+
+    // ── Criar Ambiente de Trabalho — envia workflows para o repositório ───────
+
+    fun setupWorkspace(ownerLogin: String, repoName: String) {
+        viewModelScope.launch {
+            _workspaceSetupState.value = WorkspaceSetupState.Setting
+
+            if (token.value == "123456789") {
+                delay(1500)
+                _workspaceSetupState.value = WorkspaceSetupState.Done
+                return@launch
+            }
+
+            val success = repository.setupWorkspace(ownerLogin, repoName)
+            _workspaceSetupState.value = if (success) {
+                WorkspaceSetupState.Done
+            } else {
+                WorkspaceSetupState.Failed("Não foi possível enviar os workflows. Verifica a ligação e tenta novamente.")
+            }
+        }
     }
 
     // ── Acções existentes ─────────────────────────────────────────────────────
@@ -282,6 +312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value           = UiState.Idle
             _repoCreationState.value = RepoCreationState.Idle
             _smokeTestState.value    = SmokeTestState.Idle
+            _workspaceSetupState.value = WorkspaceSetupState.Idle
             _generationStatus.value  = null
         }
     }
@@ -308,10 +339,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Geração de personagem — Magic Box ─────────────────────────────────────
 
-    /**
-     * Dispara o workflow E inicia o polling silencioso.
-     * O ViewerScreen recebe apenas [GenerationStatus] — sem nenhuma linguagem de GitHub.
-     */
     fun generate() {
         val t = token.value ?: return
         val r = selectedRepo.value ?: return
@@ -322,13 +349,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         generationJob = viewModelScope.launch {
             _uiState.value = UiState.Loading
 
-            // Demo mode
             if (t == "123456789") {
                 simulateDemoGeneration()
                 return@launch
             }
 
-            // 1. Disparar o workflow
             val success = repository.generateCharacter(t, r, _currentCharacter.value)
             if (!success) {
                 _generationStatus.value = GenerationStatus.Failed(
@@ -342,7 +367,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = UiState.Success("Generation started")
             fetchWorkflowRuns(t, r)
 
-            // 2. Polling silencioso até os ficheiros estarem prontos
             val characterId = _currentCharacter.value.name
                 .lowercase()
                 .replace(" ", "_")
@@ -353,14 +377,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Reinicia o estado e volta ao ecrã do criador. */
     fun retryGeneration() {
         generationJob?.cancel()
         _generationStatus.value = null
         _uiState.value = UiState.Idle
     }
 
-    // ── Demo mode — simula loading + ficheiros prontos ────────────────────────
+    // ── Demo mode ─────────────────────────────────────────────────────────────
 
     private suspend fun simulateDemoGeneration() {
         val steps = listOf(
