@@ -48,13 +48,8 @@ class GitHubRepository(private val context: Context) {
         RepositorySetupService(api)
     }
 
-    // ── Compatibility flows for MainViewModel ─────────────────────────────────
-
     val tokenFlow: Flow<String?> = MutableStateFlow(tokenManager.getBearerToken()).asStateFlow()
-
     val selectedRepoFlow: Flow<String?> = MutableStateFlow(tokenManager.getSelectedRepo()).asStateFlow()
-
-    // ── Token / session helpers ───────────────────────────────────────────────
 
     suspend fun saveToken(token: String) {
         tokenManager.saveAccessToken(token.trim().removePrefix("Bearer ").removePrefix("bearer "))
@@ -67,8 +62,6 @@ class GitHubRepository(private val context: Context) {
     suspend fun clearSession() {
         tokenManager.clearAll()
     }
-
-    // ── API calls ─────────────────────────────────────────────────────────────
 
     suspend fun getUser(token: String): GitHubUser? {
         val bearer = token.asBearerToken()
@@ -131,15 +124,12 @@ class GitHubRepository(private val context: Context) {
     }
 
     /**
-     * Envia os workflows AXEV para .github/workflows/ do repositório indicado.
-     * Chamado pelo botão "Criar Ambiente de Trabalho" no ecrã de sucesso.
-     * Devolve true se pelo menos um workflow foi enviado com sucesso.
+     * Envia os workflows AXEV para .github/workflows/ do repositório.
+     * Tenta até 3 vezes com 5s de espera entre tentativas,
+     * para dar tempo ao GitHub de inicializar o branch main.
      */
     suspend fun setupWorkspace(owner: String, repoName: String): Boolean {
         val bearer = tokenManager.getBearerToken() ?: return false
-
-        // Aguarda 1 s para garantir que o branch main está inicializado
-        delay(1_000)
 
         val workflows = listOf(
             ".github/workflows/${WorkflowTemplates.WORKFLOW_GENERATE}" to
@@ -148,28 +138,37 @@ class GitHubRepository(private val context: Context) {
                 WorkflowTemplates.smokeWorkflowBase64()
         )
 
-        var anySuccess = false
-        for ((path, content) in workflows) {
-            try {
-                val response = api.createFile(
-                    token   = bearer,
-                    owner   = owner,
-                    repo    = repoName,
-                    path    = path,
-                    request = CreateFileRequest(
-                        message = "chore: add AXEV workflow — ${path.substringAfterLast("/")}",
-                        content = content
-                    )
-                )
-                if (response.isSuccessful) anySuccess = true
-            } catch (_: Exception) {
-                // Continua para o próximo workflow
-            }
-        }
-        return anySuccess
-    }
+        // Tenta até 3 vezes — o GitHub pode demorar a inicializar o branch main
+        repeat(3) { attempt ->
+            if (attempt > 0) delay(5_000) // 5s entre tentativas
 
-    // ── Geração de personagem ─────────────────────────────────────────────────
+            var allSuccess = true
+            for ((path, content) in workflows) {
+                try {
+                    val response = api.createFile(
+                        token   = bearer,
+                        owner   = owner,
+                        repo    = repoName,
+                        path    = path,
+                        request = CreateFileRequest(
+                            message = "chore: add AXEV workflow — ${path.substringAfterLast("/")}",
+                            content = content
+                        )
+                    )
+                    // 201 = criado, 422 = já existe (também é ok)
+                    if (!response.isSuccessful && response.code() != 422) {
+                        allSuccess = false
+                    }
+                } catch (_: Exception) {
+                    allSuccess = false
+                }
+            }
+
+            if (allSuccess) return true
+        }
+
+        return false
+    }
 
     suspend fun generateCharacter(
         token: String,
@@ -215,8 +214,6 @@ class GitHubRepository(private val context: Context) {
         }
     }
 
-    // ── Smoke test ────────────────────────────────────────────────────────────
-
     suspend fun runSmokeTest(repoFullName: String): Boolean {
         val bearer = tokenManager.getBearerToken() ?: return false
         val parts  = repoFullName.split("/")
@@ -246,8 +243,6 @@ class GitHubRepository(private val context: Context) {
             emptyList()
         }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun String.asBearerToken() =
         if (startsWith("Bearer ")) this else "Bearer $this"
