@@ -320,7 +320,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *
      * Não bloqueia a UI — o estado é exposto via [workflowUpdateState].
      */
-    fun updateWorkflows(repoFullName: String = selectedRepo.value ?: return) {
+    fun updateWorkflows(repoFullName: String? = null) {
+        val repo = repoFullName ?: selectedRepo.value ?: return
+
         if (token.value == "123456789") {
             Log.d(TAG, "updateWorkflows: demo mode — skipping")
             _workflowUpdateState.value = WorkflowUpdateState.Done
@@ -328,10 +330,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            Log.i(TAG, "updateWorkflows: starting for $repoFullName")
+            Log.i(TAG, "updateWorkflows: starting for $repo")
             _workflowUpdateState.value = WorkflowUpdateState.Updating
 
-            when (val result = repository.updateWorkflows(repoFullName)) {
+            when (val result = repository.updateWorkflows(repo)) {
                 is WorkflowUpdateResult.Success -> {
                     Log.i(TAG, "updateWorkflows: ✅ all workflows up to date")
                     _workflowUpdateState.value = WorkflowUpdateState.Done
