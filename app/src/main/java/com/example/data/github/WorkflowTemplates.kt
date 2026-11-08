@@ -518,7 +518,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AXEV-CHARACTER-${'$'}{{ inputs.character_id }}
-          path: axev-output/
+          path: ara-3d-gen/out/
           if-no-files-found: error
           retention-days: 14
 """.trimIndent()
