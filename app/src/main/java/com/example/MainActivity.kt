@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,13 +38,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Tratar o deep link axev3d://callback?token=xxx se a app abriu via esse link
+        handleDeepLinkIntent(intent)
+
         setContent {
             AXEVCRIME3DSTUDIOTheme {
                 val navController = rememberNavController()
                 val authState by viewModel.authState.collectAsState()
                 val selectedRepo by viewModel.selectedRepo.collectAsState()
 
-                // Navegação reativa — sempre que authState ou selectedRepo mudam, navega
+                // Navegação reativa
                 LaunchedEffect(authState, selectedRepo) {
                     when {
                         authState !is AuthState.Authenticated -> {
@@ -79,7 +84,6 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Login.route) {
                             LoginScreen(viewModel = viewModel)
                         }
-
                         composable(Screen.RepoSelection.route) {
                             RepoSelectionScreen(
                                 viewModel = viewModel,
@@ -93,7 +97,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-
                         composable(Screen.CreateRepo.route) {
                             CreateRepoScreen(
                                 viewModel = viewModel,
@@ -104,7 +107,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-
                         composable(Screen.Dashboard.route) {
                             DashboardScreen(
                                 viewModel = viewModel,
@@ -115,6 +117,28 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Chamado quando a app é retomada via deep link (ex: browser redireciona axev3d://callback?token=xxx).
+     * launchMode="singleTop" garante que esta instância é reutilizada em vez de criar uma nova.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleDeepLinkIntent(intent)
+    }
+
+    /**
+     * Extrai o token do deep link axev3d://callback?token=xxx e passa-o ao ViewModel.
+     */
+    private fun handleDeepLinkIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme == "axev3d" && uri.host == "callback") {
+            val token = uri.getQueryParameter("token")
+            if (!token.isNullOrBlank()) {
+                viewModel.handleOAuthCallback(token)
             }
         }
     }
