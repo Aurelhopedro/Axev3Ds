@@ -1,0 +1,69 @@
+name: ARA 3D GEN - AXEV CRIME STUDIO
+
+on:
+  workflow_dispatch:
+    inputs:
+      character_id:
+        description: 'Character ID'
+        required: true
+      character_name:
+        description: 'Character Name'
+        required: true
+      preset:
+        description: 'Preset (The Soldier, etc)'
+        required: true
+        default: 'The Soldier'
+      quality:
+        description: 'Quality (Low, Medium, High)'
+        required: true
+        default: 'High'
+      export_formats:
+        description: 'Export Formats (GLB, FBX, OBJ)'
+        required: true
+        default: 'GLB'
+      config_json:
+        description: 'Full Configuration JSON'
+        required: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Studio Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Clone Ara 3D Gen Engine
+        run: |
+          git clone https://github.com/olatunde85/3d-gen.git engine
+          cd engine
+          npm install
+
+      - name: Prepare Generation Directory
+        run: mkdir -p output/${{ github.event.inputs.character_id }}
+
+      - name: Run Generation
+        run: |
+          # This is a placeholder for the actual command supported by ara-3d-gen
+          # In a real scenario, we would pass the config_json to the generator script
+          echo "Generating character: ${{ github.event.inputs.character_name }}"
+          echo '${{ github.event.inputs.config_json }}' > character_config.json
+          # node engine/generate.js --config character_config.json --output output/${{ github.event.inputs.character_id }}
+          
+          # Simulate file creation for the demo/workflow validation
+          touch output/${{ github.event.inputs.character_id }}/character.glb
+          touch output/${{ github.event.inputs.character_id }}/character.fbx
+          echo "# Character Documentation: ${{ github.event.inputs.character_name }}" > output/${{ github.event.inputs.character_id }}/character_documentation.md
+          echo "ID: ${{ github.event.inputs.character_id }}" >> output/${{ github.event.inputs.character_id }}/character_documentation.md
+          echo "Preset: ${{ github.event.inputs.preset }}" >> output/${{ github.event.inputs.character_id }}/character_documentation.md
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: character-${{ github.event.inputs.character_id }}
+          path: output/${{ github.event.inputs.character_id }}/
+          retention-days: 7

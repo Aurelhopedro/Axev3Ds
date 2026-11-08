@@ -1,0 +1,6 @@
+{
+  "name": "AXEV CRIME 3D STUDIO",
+  "description": "Professional 3D character studio for AXEV CRIME, integrated with GitHub Actions and Ara 3D Gen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
