@@ -5,6 +5,26 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface GitHubApi {
+
+    // ── Autenticação (Device Flow) ────────────────────────────────────────────
+
+    @FormUrlEncoded
+    @POST("login/device/code")
+    suspend fun requestDeviceCode(
+        @Field("client_id") clientId: String,
+        @Field("scope") scope: String = "repo public_repo read:user"
+    ): Response<DeviceCodeResponse>
+
+    @FormUrlEncoded
+    @POST("login/oauth/access_token")
+    suspend fun pollAccessToken(
+        @Field("client_id") clientId: String,
+        @Field("device_code") deviceCode: String,
+        @Field("grant_type") grantType: String = "urn:ietf:params:oauth:grant-type:device_code"
+    ): Response<AccessTokenResponse>
+
+    // ── Utilizador ────────────────────────────────────────────────────────────
+
     @GET("user")
     suspend fun getUser(
         @Header("Authorization") token: String
@@ -15,6 +35,16 @@ interface GitHubApi {
         @Header("Authorization") token: String,
         @Query("sort") sort: String = "updated"
     ): Response<List<GitHubRepo>>
+
+    // ── Repositórios ─────────────────────────────────────────────────────────
+
+    @POST("user/repos")
+    suspend fun createRepo(
+        @Header("Authorization") token: String,
+        @Body request: CreateRepoRequest
+    ): Response<GitHubRepo>
+
+    // ── Workflows ─────────────────────────────────────────────────────────────
 
     @POST("repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches")
     suspend fun dispatchWorkflow(
@@ -42,6 +72,38 @@ interface GitHubApi {
     ): Response<ArtifactsResponse>
 }
 
+// ── Modelos de Device Flow ────────────────────────────────────────────────────
+
+@JsonClass(generateAdapter = true)
+data class DeviceCodeResponse(
+    val device_code: String,
+    val user_code: String,
+    val verification_uri: String,
+    val expires_in: Int,
+    val interval: Int
+)
+
+@JsonClass(generateAdapter = true)
+data class AccessTokenResponse(
+    val access_token: String?,
+    val token_type: String?,
+    val scope: String?,
+    val error: String?,
+    val error_description: String?
+)
+
+// ── Modelos de Repositório ────────────────────────────────────────────────────
+
+@JsonClass(generateAdapter = true)
+data class CreateRepoRequest(
+    val name: String,
+    val description: String,
+    val private: Boolean = false,
+    val auto_init: Boolean = true
+)
+
+// ── Modelos Existentes ────────────────────────────────────────────────────────
+
 @JsonClass(generateAdapter = true)
 data class GitHubUser(
     val login: String,
@@ -54,7 +116,11 @@ data class GitHubRepo(
     val name: String,
     val full_name: String,
     val owner: GitHubUser,
-    val default_branch: String
+    val default_branch: String,
+    val html_url: String = "",
+    val description: String? = null,
+    val private: Boolean = false,
+    val created_at: String? = null
 )
 
 @JsonClass(generateAdapter = true)
