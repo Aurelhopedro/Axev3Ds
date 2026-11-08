@@ -11,11 +11,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,10 +36,35 @@ import com.example.ui.components.TacticalCard
 import com.example.ui.theme.TacticalOrange
 
 @Composable
-fun DashboardScreen(viewModel: MainViewModel, onNavigateToCreateRepo: (() -> Unit)? = null) {
+fun DashboardScreen(
+    viewModel: MainViewModel,
+    onNavigateToCreateRepo: (() -> Unit)? = null
+) {
     val user by viewModel.user.collectAsState()
     val repo by viewModel.selectedRepo.collectAsState()
     val runs by viewModel.workflowRuns.collectAsState()
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            icon = { Icon(Icons.Default.Logout, null) },
+            title = { Text("Terminar sessão?") },
+            text = { Text("Vais ser desligado da tua conta GitHub.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        viewModel.logout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Sair") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -44,11 +73,15 @@ fun DashboardScreen(viewModel: MainViewModel, onNavigateToCreateRepo: (() -> Uni
         contentPadding = PaddingValues(vertical = 16.dp)
     ) {
         item {
-            UserHeader(user, repo, onRefresh = { viewModel.fetchWorkflowRuns() })
+            UserHeader(
+                user = user,
+                repo = repo,
+                onRefresh = { viewModel.fetchWorkflowRuns() },
+                onLogout = { showLogoutDialog = true }
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // "Create My 3D Repository" card — shown when no repo selected or as a shortcut
         item {
             if (onNavigateToCreateRepo != null || repo == null) {
                 CreateRepoPromptCard(onClick = onNavigateToCreateRepo ?: {})
@@ -87,84 +120,58 @@ fun CreateRepoPromptCard(onClick: () -> Unit) {
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A2A1A)
-        ),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2A1A)),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E7D32))
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Default.FolderSpecial,
-                contentDescription = null,
-                tint = Color(0xFF4CAF50),
-                modifier = Modifier.size(32.dp)
-            )
+            Icon(Icons.Default.FolderSpecial, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(32.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Create My 3D Repository",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    "Set up your GitHub workspace for AXEV 3D Studio",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+                Text("Create My 3D Repository", fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Set up your GitHub workspace for AXEV 3D Studio", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-            Icon(
-                Icons.Default.Add,
-                contentDescription = null,
-                tint = Color(0xFF4CAF50)
-            )
+            Icon(Icons.Default.Add, null, tint = Color(0xFF4CAF50))
         }
     }
 }
 
 @Composable
-fun UserHeader(user: com.example.data.api.GitHubUser?, repo: String?, onRefresh: () -> Unit) {
+fun UserHeader(
+    user: com.example.data.api.GitHubUser?,
+    repo: String?,
+    onRefresh: () -> Unit,
+    onLogout: () -> Unit
+) {
     TacticalCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (user?.avatar_url != null) {
                 AsyncImage(
                     model = user.avatar_url,
                     contentDescription = null,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape),
+                    modifier = Modifier.size(48.dp).clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(
-                    Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = Color.Gray
-                )
+                Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(48.dp), tint = Color.Gray)
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = user?.name ?: user?.login ?: "Unknown User",
+                    text = user?.name ?: user?.login ?: "Demo User",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "@${user?.login ?: "—"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
-                Text(
-                    text = repo ?: "No repository selected",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TacticalOrange
-                )
+                Text("@${user?.login ?: "demo"}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Text(repo ?: "No repository selected", style = MaterialTheme.typography.labelSmall, color = TacticalOrange)
             }
             IconButton(onClick = onRefresh) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.White)
+                Icon(Icons.Default.Refresh, null, tint = Color.White)
+            }
+            IconButton(onClick = onLogout) {
+                Icon(Icons.Default.Logout, null, tint = Color.Gray)
             }
         }
     }
@@ -187,17 +194,8 @@ fun QuickStats(runs: List<WorkflowRun>) {
 fun StatItem(label: String, value: String, modifier: Modifier = Modifier) {
     TacticalCard(modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                color = TacticalOrange
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray
-            )
+            Text(text = value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = TacticalOrange)
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
         }
     }
 }
@@ -207,16 +205,8 @@ fun GenerationItem(run: WorkflowRun) {
     TacticalCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = run.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "ID: ${run.id}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
+                Text(text = run.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Text(text = "ID: ${run.id}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
             }
             StatusBadge(status = run.conclusion ?: run.status)
         }
