@@ -4,15 +4,16 @@ on:
   workflow_dispatch:
     inputs:
 
-      # ── IDENTIDADE ────────────────────────────────────────────────────────
+      # 1
       character_name:
-        description: "Nome do personagem (texto livre)"
+        description: "Nome do personagem"
         required: true
         type: string
         default: "AXEV Character"
 
+      # 2
       preset:
-        description: "Preset base do personagem"
+        description: "Preset base"
         required: true
         type: choice
         default: "The Soldier"
@@ -50,78 +51,51 @@ on:
           - "Elder"
           - "Teen"
 
-      gender:
-        description: "Género"
+      # 3
+      gender_age:
+        description: "Género e idade (género:idade)"
         required: true
         type: choice
-        default: "male"
+        default: "male:25"
         options:
-          - "male"
-          - "female"
-          - "androgynous"
+          - "male:18"
+          - "male:25"
+          - "male:30"
+          - "male:40"
+          - "male:50"
+          - "male:60"
+          - "male:70"
+          - "female:18"
+          - "female:25"
+          - "female:30"
+          - "female:40"
+          - "female:50"
+          - "female:60"
+          - "androgynous:25"
+          - "androgynous:30"
 
-      age:
-        description: "Idade aproximada"
+      # 4
+      body:
+        description: "Corpo (musculatura:peso:altura)"
         required: true
         type: choice
-        default: "25"
+        default: "medium:average:average"
         options:
-          - "16"
-          - "18"
-          - "20"
-          - "25"
-          - "30"
-          - "35"
-          - "40"
-          - "45"
-          - "50"
-          - "55"
-          - "60"
-          - "65"
-          - "70"
-          - "80"
-          - "90"
+          - "slim:very slim:short"
+          - "slim:slim:average"
+          - "medium:average:average"
+          - "athletic:average:tall"
+          - "athletic:slim:average"
+          - "muscular:average:tall"
+          - "muscular:heavy:tall"
+          - "very muscular:heavy:very tall"
+          - "medium:heavy:average"
+          - "medium:very heavy:short"
+          - "none:slim:very short"
 
-      # ── CORPO ────────────────────────────────────────────────────────────
-      muscle:
-        description: "Musculatura"
-        required: true
-        type: choice
-        default: "medium"
-        options:
-          - "none"
-          - "slim"
-          - "medium"
-          - "athletic"
-          - "muscular"
-          - "very muscular"
-
-      weight:
-        description: "Peso corporal"
-        required: true
-        type: choice
-        default: "average"
-        options:
-          - "very slim"
-          - "slim"
-          - "average"
-          - "heavy"
-          - "very heavy"
-
-      height:
-        description: "Altura"
-        required: true
-        type: choice
-        default: "average"
-        options:
-          - "very short"
-          - "short"
-          - "average"
-          - "tall"
-          - "very tall"
-
+      # 5
       skin_tone:
-        description: "Tom de pele / etnia"
+        description: "Tom de pele"
         required: true
         type: choice
         default: "mixed"
@@ -135,48 +109,41 @@ on:
           - "asian"
           - "caucasian"
 
-      # ── CABELO ───────────────────────────────────────────────────────────
-      hair_style:
-        description: "Estilo de cabelo"
+      # 6
+      hair:
+        description: "Cabelo (estilo:cor)"
         required: true
         type: choice
-        default: "short02"
+        default: "short02:black"
         options:
-          - "none"
-          - "buzz"
-          - "mohawk"
-          - "short01"
-          - "short02"
-          - "short03"
-          - "short04"
-          - "long01"
-          - "bob01"
-          - "bob02"
-          - "ponytail01"
-          - "braid01"
-          - "afro01"
-          - "cornrows"
-          - "box_braids"
+          - "none:black"
+          - "buzz:black"
+          - "buzz:brown"
+          - "short02:black"
+          - "short02:brown"
+          - "short02:blonde"
+          - "short02:grey"
+          - "short04:black"
+          - "short04:brown"
+          - "long01:black"
+          - "long01:brown"
+          - "long01:blonde"
+          - "long01:red"
+          - "long01:purple"
+          - "bob02:black"
+          - "bob02:brown"
+          - "afro01:black"
+          - "cornrows:black"
+          - "box_braids:black"
+          - "ponytail01:black"
+          - "ponytail01:brown"
+          - "braid01:black"
+          - "mohawk:black"
+          - "mohawk:purple"
 
-      hair_color:
-        description: "Cor do cabelo"
-        required: true
-        type: choice
-        default: "black"
-        options:
-          - "black"
-          - "dark brown"
-          - "brown"
-          - "blonde"
-          - "red"
-          - "grey"
-          - "white"
-          - "purple"
-          - "blue"
-          - "pink"
-
+      # 7
       facial_hair:
-        description: "Pelo facial (homens)"
+        description: "Pelo facial"
         required: true
         type: choice
         default: "none"
@@ -189,7 +156,7 @@ on:
           - "short_beard"
           - "full_beard"
 
-      # ── OLHOS ────────────────────────────────────────────────────────────
+      # 8
       eyes:
         description: "Cor dos olhos"
         required: true
@@ -205,16 +172,15 @@ on:
           - "grey"
           - "ice"
 
-      # ── ROUPA ────────────────────────────────────────────────────────────
+      # 9
       outfit:
-        description: "Roupa / outfit completo (sobrepõe top+bottom se escolhido)"
+        description: "Roupa"
         required: true
         type: choice
         default: "preset_default"
         options:
           - "preset_default"
           - "male_casualsuit01"
-          - "male_casualsuit05"
           - "male_elegantsuit01"
           - "male_worksuit01"
           - "female_casualsuit02"
@@ -226,90 +192,39 @@ on:
           - "set_pantsuit"
           - "set_prison_jumpsuit"
           - "set_street_tee_jeans"
-          - "set_thobe"
-          - "set_pastel_suit"
           - "set_clergy"
+          - "set_thobe"
+          - "fatigue_shirt+fatigue_pants"
+          - "uniform_shirt+uniform_trousers"
+          - "tank_top+cargo_shorts"
+          - "techwear_jacket+techwear_pants"
           - "none"
 
-      top:
-        description: "Top separado (apenas se outfit = none)"
+      # 10
+      shoes_hat:
+        description: "Calçado:Chapéu"
         required: true
         type: choice
-        default: "preset_default"
+        default: "preset_default:none"
         options:
-          - "preset_default"
-          - "none"
-          - "fatigue_shirt"
-          - "uniform_shirt"
-          - "tank_top"
-          - "tunic"
-          - "long_tunic"
-          - "techwear_jacket"
-          - "tattered_shirt"
-          - "sheriff_shirt"
-          - "tank_top"
+          - "preset_default:none"
+          - "combat_boots:none"
+          - "combat_boots:helmet"
+          - "combat_boots:beret"
+          - "sneakers:baseball_cap"
+          - "sneakers:none"
+          - "oxfords:none"
+          - "oxfords:fedora01"
+          - "shoes01:none"
+          - "shoes02:none"
+          - "heels:none"
+          - "sandals:none"
+          - "none:cowboy_hat"
+          - "shoes03:cowboy_hat"
 
-      bottom:
-        description: "Bottom separado (apenas se outfit = none)"
-        required: true
-        type: choice
-        default: "preset_default"
-        options:
-          - "preset_default"
-          - "none"
-          - "fatigue_pants"
-          - "uniform_trousers"
-          - "cargo_shorts"
-          - "trousers"
-          - "loincloth"
-          - "wrapper_knee"
-          - "hide_aprons"
-          - "techwear_pants"
-          - "tattered_pants"
-          - "sheriff_trousers"
-
-      shoes:
-        description: "Calçado"
-        required: true
-        type: choice
-        default: "preset_default"
-        options:
-          - "preset_default"
-          - "none"
-          - "shoes01"
-          - "shoes02"
-          - "shoes03"
-          - "shoes04"
-          - "shoes06"
-          - "combat_boots"
-          - "oxfords"
-          - "sneakers"
-          - "heels"
-          - "loafers"
-          - "sandals"
-          - "flipflops"
-          - "slides"
-
-      hat:
-        description: "Chapéu / cobertura de cabeça"
-        required: true
-        type: choice
-        default: "none"
-        options:
-          - "none"
-          - "preset_default"
-          - "baseball_cap"
-          - "helmet"
-          - "beret"
-          - "fedora01"
-          - "fedora_cocked"
-          - "cowboy_hat"
-          - "keffiyeh"
-          - "fila_cap"
-
-      # ── ACESSÓRIOS E ARMAS ────────────────────────────────────────────────
+      # 11
       weapon:
-        description: "Arma na mão direita"
+        description: "Arma"
         required: true
         type: choice
         default: "none"
@@ -324,6 +239,7 @@ on:
           - "axe"
           - "bat"
 
+      # 12
       expression:
         description: "Expressão facial"
         required: true
@@ -338,48 +254,26 @@ on:
           - "surprised"
           - "afraid"
 
-      # ── RIG E ANIMAÇÕES ──────────────────────────────────────────────────
-      rig:
-        description: "Tipo de rig (esqueleto)"
+      # 13
+      rig_anim:
+        description: "Rig:Animações:Pose"
         required: true
         type: choice
-        default: "game"
+        default: "game:yes:A"
         options:
-          - "game"
-          - "game_lite"
-          - "full"
-          - "none"
+          - "game:yes:A"
+          - "game:yes:T"
+          - "game:no:A"
+          - "game:no:T"
+          - "game_lite:yes:A"
+          - "game_lite:yes:T"
+          - "full:yes:A"
+          - "full:yes:T"
+          - "none:no:A"
 
-      animations:
-        description: "Incluir animações no export"
-        required: true
-        type: choice
-        default: "yes"
-        options:
-          - "yes"
-          - "no"
-
-      rest_pose:
-        description: "Pose de descanso do rig"
-        required: true
-        type: choice
-        default: "A"
-        options:
-          - "A"
-          - "T"
-
-      face_shapes:
-        description: "Incluir blend shapes faciais (expressões)"
-        required: true
-        type: choice
-        default: "yes"
-        options:
-          - "yes"
-          - "no"
-
-      # ── QUALIDADE E EXPORTAÇÃO ────────────────────────────────────────────
+      # 14
       quality:
-        description: "Nível de detalhe / qualidade"
+        description: "Qualidade"
         required: true
         type: choice
         default: "high"
@@ -388,6 +282,7 @@ on:
           - "medium"
           - "high"
 
+      # 15
       export_formats:
         description: "Formatos a exportar"
         required: true
@@ -403,15 +298,16 @@ on:
           - "glb,fbx,obj"
           - "glb,fbx,obj,zip"
 
-      # ── IDs PARA COMPATIBILIDADE COM A APP ───────────────────────────────
+      # 16 — compatibilidade com a app Android
       character_id:
-        description: "ID do personagem (gerado pela app, ou deixar o default)"
+        description: "ID do personagem (gerado pela app)"
         required: true
         type: string
         default: "character_001"
 
+      # 17 — compatibilidade com a app Android
       config_json:
-        description: "JSON do CharacterConfig da app Android (opcional)"
+        description: "JSON do CharacterConfig da app (opcional)"
         required: false
         type: string
         default: ""
@@ -434,7 +330,6 @@ jobs:
       - name: Validar inputs
         env:
           INPUT_FORMATS: ${{ inputs.export_formats }}
-          INPUT_QUALITY: ${{ inputs.quality }}
           INPUT_ID:      ${{ inputs.character_id }}
           INPUT_JSON:    ${{ inputs.config_json }}
         run: |
@@ -463,7 +358,6 @@ jobs:
               exit 1
             fi
           fi
-
           echo "✅ Inputs validados. Formatos: $FORMATS_NORM"
 
       # ─── 2. CHECKOUT ─────────────────────────────────────────────────────
@@ -510,31 +404,21 @@ jobs:
       # ─── 7. CONSTRUIR PARÂMETROS ──────────────────────────────────────────
       - name: Construir parâmetros do personagem
         env:
-          INPUT_PRESET:       ${{ inputs.preset }}
-          INPUT_NAME:         ${{ inputs.character_name }}
-          INPUT_GENDER:       ${{ inputs.gender }}
-          INPUT_AGE:          ${{ inputs.age }}
-          INPUT_MUSCLE:       ${{ inputs.muscle }}
-          INPUT_WEIGHT:       ${{ inputs.weight }}
-          INPUT_HEIGHT:       ${{ inputs.height }}
-          INPUT_SKIN:         ${{ inputs.skin_tone }}
-          INPUT_HAIR_STYLE:   ${{ inputs.hair_style }}
-          INPUT_HAIR_COLOR:   ${{ inputs.hair_color }}
-          INPUT_FACIAL_HAIR:  ${{ inputs.facial_hair }}
-          INPUT_EYES:         ${{ inputs.eyes }}
-          INPUT_OUTFIT:       ${{ inputs.outfit }}
-          INPUT_TOP:          ${{ inputs.top }}
-          INPUT_BOTTOM:       ${{ inputs.bottom }}
-          INPUT_SHOES:        ${{ inputs.shoes }}
-          INPUT_HAT:          ${{ inputs.hat }}
-          INPUT_WEAPON:       ${{ inputs.weapon }}
-          INPUT_EXPRESSION:   ${{ inputs.expression }}
-          INPUT_RIG:          ${{ inputs.rig }}
-          INPUT_ANIMATIONS:   ${{ inputs.animations }}
-          INPUT_REST_POSE:    ${{ inputs.rest_pose }}
-          INPUT_FACE_SHAPES:  ${{ inputs.face_shapes }}
-          INPUT_QUALITY:      ${{ inputs.quality }}
-          INPUT_JSON:         ${{ inputs.config_json }}
+          INPUT_PRESET:      ${{ inputs.preset }}
+          INPUT_NAME:        ${{ inputs.character_name }}
+          INPUT_GENDER_AGE:  ${{ inputs.gender_age }}
+          INPUT_BODY:        ${{ inputs.body }}
+          INPUT_SKIN:        ${{ inputs.skin_tone }}
+          INPUT_HAIR:        ${{ inputs.hair }}
+          INPUT_FACIAL_HAIR: ${{ inputs.facial_hair }}
+          INPUT_EYES:        ${{ inputs.eyes }}
+          INPUT_OUTFIT:      ${{ inputs.outfit }}
+          INPUT_SHOES_HAT:   ${{ inputs.shoes_hat }}
+          INPUT_WEAPON:      ${{ inputs.weapon }}
+          INPUT_EXPRESSION:  ${{ inputs.expression }}
+          INPUT_RIG_ANIM:    ${{ inputs.rig_anim }}
+          INPUT_QUALITY:     ${{ inputs.quality }}
+          INPUT_JSON:        ${{ inputs.config_json }}
         run: |
           mkdir -p axev-build
           python3 << 'PYEOF'
@@ -543,120 +427,100 @@ jobs:
           def env(k, d=""): return os.environ.get(k, d).strip()
 
           preset = env("INPUT_PRESET", "Athletic man")
-
-          # Defaults base
           params = {
             "name": env("INPUT_NAME", preset) or preset,
             "detail": env("INPUT_QUALITY", "high").lower(),
-            "rig": env("INPUT_RIG", "game"),
-            "restPose": env("INPUT_REST_POSE", "A"),
-            "animations": env("INPUT_ANIMATIONS", "yes") == "yes",
-            "faceShapes": env("INPUT_FACE_SHAPES", "yes") == "yes",
-            "speechShapes": True,
-            "faceBones": True,
           }
 
-          # Género
-          g = env("INPUT_GENDER", "male")
-          params["gender"] = 0.0 if g == "female" else (0.5 if g == "androgynous" else 1.0)
-
-          # Idade
+          # género:idade
+          ga = env("INPUT_GENDER_AGE", "male:25").split(":")
+          gender_str = ga[0] if len(ga) > 0 else "male"
+          age_str    = ga[1] if len(ga) > 1 else "25"
+          params["gender"] = 0.0 if gender_str == "female" else (0.5 if gender_str == "androgynous" else 1.0)
           try:
-            y = int(env("INPUT_AGE", "25"))
-            y = max(12, min(90, y))
-            if y < 25:
-              params["age"] = 0.1875 + ((y-11)/14)*0.3125 if y >= 11 else (y/11)*0.1875
-            else:
-              params["age"] = 0.5 + ((y-25)/65)*0.5
+            y = max(12, min(90, int(age_str)))
+            params["age"] = round(0.5 + ((y-25)/65)*0.5 if y >= 25 else 0.1875 + ((y-11)/14)*0.3125 if y >= 11 else (y/11)*0.1875, 4)
           except: pass
 
-          # Musculatura
+          # musculatura:peso:altura
           muscle_map = {"none":0.1,"slim":0.3,"medium":0.5,"athletic":0.7,"muscular":0.85,"very muscular":1.0}
-          params["muscle"] = muscle_map.get(env("INPUT_MUSCLE","medium"), 0.6)
-
-          # Peso
           weight_map = {"very slim":0.15,"slim":0.3,"average":0.5,"heavy":0.7,"very heavy":0.9}
-          params["weight"] = weight_map.get(env("INPUT_WEIGHT","average"), 0.5)
-
-          # Altura
           height_map = {"very short":0.1,"short":0.3,"average":0.5,"tall":0.7,"very tall":0.9}
-          params["height"] = height_map.get(env("INPUT_HEIGHT","average"), 0.5)
+          body_parts = env("INPUT_BODY", "medium:average:average").split(":")
+          if len(body_parts) >= 1: params["muscle"] = muscle_map.get(body_parts[0], 0.5)
+          if len(body_parts) >= 2: params["weight"] = weight_map.get(body_parts[1], 0.5)
+          if len(body_parts) >= 3: params["height"] = height_map.get(body_parts[2], 0.5)
 
-          # Tom de pele
+          # pele
           skin_map = {
-            "very light":  {"african":0.0,"asian":0.05,"caucasian":0.95},
-            "light":       {"african":0.0,"asian":0.1,"caucasian":0.9},
-            "mixed":       {"african":0.3,"asian":0.2,"caucasian":0.5},
-            "dark":        {"african":0.7,"asian":0.1,"caucasian":0.2},
-            "very dark":   {"african":0.9,"asian":0.05,"caucasian":0.05},
-            "african":     {"african":1.0,"asian":0.0,"caucasian":0.0},
-            "asian":       {"african":0.0,"asian":1.0,"caucasian":0.0},
-            "caucasian":   {"african":0.0,"asian":0.0,"caucasian":1.0},
+            "very light":{"african":0.0,"asian":0.05,"caucasian":0.95},
+            "light":     {"african":0.0,"asian":0.1, "caucasian":0.9},
+            "mixed":     {"african":0.3,"asian":0.2, "caucasian":0.5},
+            "dark":      {"african":0.7,"asian":0.1, "caucasian":0.2},
+            "very dark": {"african":0.9,"asian":0.05,"caucasian":0.05},
+            "african":   {"african":1.0,"asian":0.0, "caucasian":0.0},
+            "asian":     {"african":0.0,"asian":1.0, "caucasian":0.0},
+            "caucasian": {"african":0.0,"asian":0.0, "caucasian":1.0},
           }
           params.update(skin_map.get(env("INPUT_SKIN","mixed"), {"african":0.3,"asian":0.2,"caucasian":0.5}))
 
-          # Cabelo
-          h = env("INPUT_HAIR_STYLE","short02")
-          if h != "preset_default": params["hair"] = h
-
-          hair_color_map = {
-            "black":"#15100c","dark brown":"#241a13","brown":"#3b2a1d",
-            "blonde":"#c8a86b","red":"#7a2e14","grey":"#6a6060",
-            "white":"#c8c0b4","purple":"#4a1a6a","blue":"#1a2a6a","pink":"#c060a0",
-          }
-          hc = hair_color_map.get(env("INPUT_HAIR_COLOR","black"))
+          # cabelo estilo:cor
+          hair_parts = env("INPUT_HAIR","short02:black").split(":")
+          hair_style = hair_parts[0] if len(hair_parts) > 0 else "short02"
+          hair_color = hair_parts[1] if len(hair_parts) > 1 else "black"
+          if hair_style != "preset_default": params["hair"] = hair_style
+          color_map = {"black":"#15100c","dark brown":"#241a13","brown":"#3b2a1d","blonde":"#c8a86b",
+                       "red":"#7a2e14","grey":"#6a6060","white":"#c8c0b4","purple":"#4a1a6a","blue":"#1a2a6a","pink":"#c060a0"}
+          hc = color_map.get(hair_color)
           if hc: params["hairColor"] = hc
 
-          # Pelo facial
+          # pelo facial
           fh = env("INPUT_FACIAL_HAIR","none")
           if fh != "preset_default": params["facialHair"] = fh
 
-          # Olhos
+          # olhos e expressão
           params["eyes"] = env("INPUT_EYES","brown")
-
-          # Expressão
           params["expression"] = env("INPUT_EXPRESSION","neutral")
 
-          # Arma
+          # arma
           w = env("INPUT_WEAPON","none")
-          if w != "preset_default": params["weapon"] = w
+          if w not in ("preset_default",""): params["weapon"] = w
 
-          # Roupa
+          # roupa
           outfit = env("INPUT_OUTFIT","preset_default")
           if outfit == "preset_default":
-            pass  # usa o preset
+            pass
+          elif "+" in outfit:
+            top, bottom = outfit.split("+", 1)
+            params["outfit"] = "none"
+            params["top"] = top
+            params["bottom"] = bottom
           elif outfit == "none":
             params["outfit"] = "none"
-            top = env("INPUT_TOP","preset_default")
-            bottom = env("INPUT_BOTTOM","preset_default")
-            if top not in ("preset_default",""): params["top"] = top
-            if bottom not in ("preset_default",""): params["bottom"] = bottom
           else:
             params["outfit"] = outfit
 
-          shoes = env("INPUT_SHOES","preset_default")
+          # calçado:chapéu
+          sh = env("INPUT_SHOES_HAT","preset_default:none").split(":")
+          shoes = sh[0] if len(sh) > 0 else "preset_default"
+          hat   = sh[1] if len(sh) > 1 else "none"
           if shoes not in ("preset_default",""): params["shoes"] = shoes
+          if hat   not in ("preset_default",""): params["hat"] = hat
 
-          hat = env("INPUT_HAT","none")
-          if hat not in ("preset_default",""): params["hat"] = hat
-
-          # Se foi fornecido config_json, merge (prioridade: inputs do workflow > config_json)
-          config_json_str = env("INPUT_JSON","")
-          if config_json_str:
-            try:
-              app_cfg = json.loads(config_json_str)
-              # guardar original
-              with open("axev-build/app_config_original.json","w") as f:
-                json.dump(app_cfg, f, indent=2)
-            except: pass
+          # rig:animações:pose
+          ra = env("INPUT_RIG_ANIM","game:yes:A").split(":")
+          params["rig"]       = ra[0] if len(ra) > 0 else "game"
+          params["animations"]= (ra[1] if len(ra) > 1 else "yes") == "yes"
+          params["restPose"]  = ra[2] if len(ra) > 2 else "A"
+          params["faceShapes"]  = True
+          params["speechShapes"]= True
+          params["faceBones"]   = True
 
           with open("axev-build/character_overrides.json","w") as f:
             json.dump(params, f, indent=2)
-
-          print("✅ Parâmetros calculados:")
+          print("✅ Parâmetros prontos:")
           print(json.dumps(params, indent=2))
           PYEOF
-          echo "RESOLVED_PRESET=${{ inputs.preset }}" >> "$GITHUB_ENV"
 
       # ─── 8. GERAR PERSONAGEM ──────────────────────────────────────────────
       - name: Gerar personagem com Ara 3D Gen
@@ -664,24 +528,20 @@ jobs:
         env:
           FORMATS_NORM:    ${{ env.FORMATS_NORM }}
           RESOLVED_PRESET: ${{ inputs.preset }}
-          INPUT_QUALITY:   ${{ inputs.quality }}
         run: |
           set -euo pipefail
           mkdir -p out
 
-          # Combinar preset + overrides
           node --input-type=module << 'JSEOF'
           import { readFileSync, writeFileSync } from 'fs';
           import { DEFAULT_PARAMS, PRESETS } from './src/core/params.js';
-
           const preset = PRESETS[process.env.RESOLVED_PRESET] ?? {};
           const overrides = JSON.parse(readFileSync('../axev-build/character_overrides.json','utf8'));
           const final = { ...DEFAULT_PARAMS, ...preset, ...overrides };
           writeFileSync('../axev-build/character.params.json', JSON.stringify(final, null, 2));
-          console.log('✅ Parâmetros finais: preset "' + process.env.RESOLVED_PRESET + '" + ' + Object.keys(overrides).length + ' overrides');
+          console.log('✅ Preset "' + process.env.RESOLVED_PRESET + '" + ' + Object.keys(overrides).length + ' overrides combinados.');
           JSEOF
 
-          echo "A gerar personagem..."
           npm run export -- \
             --params "../axev-build/character.params.json" \
             --formats "$FORMATS_NORM" \
@@ -690,25 +550,23 @@ jobs:
           echo "✅ Geração concluída."
           find out -type f -printf '  %p (%s bytes)\n'
 
-      # ─── 9. VALIDAR RESULTADOS ────────────────────────────────────────────
+      # ─── 9. VALIDAR ───────────────────────────────────────────────────────
       - name: Validar ficheiros exportados
         env:
           FORMATS_NORM: ${{ env.FORMATS_NORM }}
         run: |
           set -euo pipefail
           OUT="ara-3d-gen/out"
-
           if [ ! -d "$OUT" ] || [ -z "$(find "$OUT" -type f -print -quit)" ]; then
-            echo "::error::Nenhum ficheiro exportado em '$OUT'."
+            echo "::error::Nenhum ficheiro exportado."
             exit 1
           fi
-
           IFS=',' read -ra FMTS <<< "$FORMATS_NORM"
           for fmt in "${FMTS[@]}"; do
             fmt=$(echo "$fmt" | tr -d '[:space:]')
             FILES=$(find "$OUT" -name "*.${fmt}" -type f 2>/dev/null)
             if [ -z "$FILES" ]; then
-              echo "::error::Formato $fmt solicitado mas não produzido."
+              echo "::error::Formato $fmt não produzido."
               exit 1
             fi
             for f in $FILES; do
@@ -718,26 +576,21 @@ jobs:
           done
           echo "✅ Todos os formatos validados."
 
-      # ─── 10. RELATÓRIO ───────────────────────────────────────────────────
-      - name: Criar relatório técnico
+      # ─── 10. RELATÓRIO E ARTEFACTO ────────────────────────────────────────
+      - name: Criar relatório e publicar artefacto
         env:
           CHARACTER_ID:   ${{ inputs.character_id }}
           CHARACTER_NAME: ${{ inputs.character_name }}
           PRESET:         ${{ inputs.preset }}
-          GENDER:         ${{ inputs.gender }}
-          AGE:            ${{ inputs.age }}
-          MUSCLE:         ${{ inputs.muscle }}
-          WEIGHT:         ${{ inputs.weight }}
-          HEIGHT_VAL:     ${{ inputs.height }}
+          GENDER_AGE:     ${{ inputs.gender_age }}
+          BODY:           ${{ inputs.body }}
           SKIN:           ${{ inputs.skin_tone }}
-          HAIR:           ${{ inputs.hair_style }}
-          HAIR_COLOR:     ${{ inputs.hair_color }}
+          HAIR:           ${{ inputs.hair }}
           EYES:           ${{ inputs.eyes }}
           OUTFIT:         ${{ inputs.outfit }}
           WEAPON:         ${{ inputs.weapon }}
           EXPRESSION:     ${{ inputs.expression }}
-          RIG:            ${{ inputs.rig }}
-          ANIMATIONS:     ${{ inputs.animations }}
+          RIG_ANIM:       ${{ inputs.rig_anim }}
           FORMATS_NORM:   ${{ env.FORMATS_NORM }}
           QUALITY:        ${{ inputs.quality }}
           RUN_NUMBER:     ${{ github.run_number }}
@@ -763,19 +616,15 @@ jobs:
           | Campo | Valor |
           |-------|-------|
           | Preset | ${PRESET} |
-          | Género | ${GENDER} |
-          | Idade | ${AGE} anos |
-          | Musculatura | ${MUSCLE} |
-          | Peso | ${WEIGHT} |
-          | Altura | ${HEIGHT_VAL} |
-          | Tom de pele | ${SKIN} |
-          | Cabelo | ${HAIR} (${HAIR_COLOR}) |
+          | Género/Idade | ${GENDER_AGE} |
+          | Corpo | ${BODY} |
+          | Pele | ${SKIN} |
+          | Cabelo | ${HAIR} |
           | Olhos | ${EYES} |
           | Outfit | ${OUTFIT} |
           | Arma | ${WEAPON} |
           | Expressão | ${EXPRESSION} |
-          | Rig | ${RIG} |
-          | Animações | ${ANIMATIONS} |
+          | Rig/Anim | ${RIG_ANIM} |
           | Qualidade | ${QUALITY} |
           | Formatos | ${FORMATS_NORM} |
 
@@ -786,9 +635,6 @@ jobs:
           *Gerado por AXEV 3D Studio — ara-axev-crime.yml*
           EOF
 
-          echo "✅ Relatório criado."
-
-      # ─── 11. PUBLICAR ARTEFACTO ──────────────────────────────────────────
       - name: Publicar artefacto
         uses: actions/upload-artifact@v4
         with:
