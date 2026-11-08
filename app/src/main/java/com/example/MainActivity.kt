@@ -19,6 +19,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.AuthState
 import com.example.ui.MainViewModel
 import com.example.ui.screens.CreateRepoScreen
+import com.example.ui.screens.CreatorScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoSelectionScreen
@@ -30,7 +31,8 @@ sealed class Screen(val route: String) {
     object RepoSelection  : Screen("repo_selection")
     object CreateRepo     : Screen("create_repo")
     object Dashboard      : Screen("dashboard")
-    object Viewer         : Screen("viewer")          // ← Magic Box
+    object Creator        : Screen("creator")   // ← Personalização do personagem
+    object Viewer         : Screen("viewer")    // ← Magic Box (progresso + download)
 }
 
 class MainActivity : ComponentActivity() {
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
                                 popUpTo(0) { inclusive = true }
                             }
                         }
-                        else -> Unit   // já na dashboard ou viewer — não forçar navegação
+                        else -> Unit
                     }
                 }
 
@@ -112,9 +114,26 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToCreateRepo = {
                                     navController.navigate(Screen.CreateRepo.route)
                                 },
-                                // O DashboardScreen chama isto quando o utilizador clica "Generate"
+                                // "Generate Character" → vai primeiro ao Creator para personalizar
                                 onNavigateToViewer = {
-                                    navController.navigate(Screen.Viewer.route)
+                                    navController.navigate(Screen.Creator.route)
+                                }
+                            )
+                        }
+
+                        // Ecrã de personalização do personagem (6 passos)
+                        composable(Screen.Creator.route) {
+                            CreatorScreen(
+                                viewModel = viewModel,
+                                onGenerate = {
+                                    // Utilizador confirmou — disparar geração e ir para Viewer
+                                    viewModel.generate()
+                                    navController.navigate(Screen.Viewer.route) {
+                                        popUpTo(Screen.Creator.route) { inclusive = false }
+                                    }
+                                },
+                                onBack = {
+                                    navController.popBackStack()
                                 }
                             )
                         }
@@ -123,7 +142,6 @@ class MainActivity : ComponentActivity() {
                             ViewerScreen(
                                 viewModel = viewModel,
                                 onBack = {
-                                    // retryGeneration limpa o estado — volta ao criador
                                     viewModel.retryGeneration()
                                     navController.popBackStack()
                                 }
