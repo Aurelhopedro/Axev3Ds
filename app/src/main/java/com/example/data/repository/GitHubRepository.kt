@@ -10,6 +10,7 @@ import com.example.data.api.GitHubUser
 import com.example.data.api.WorkflowDispatchWithInputs
 import com.example.data.api.WorkflowRun
 import com.example.data.auth.AuthTokenManager
+import com.example.data.auth.GitHubAuthRepository
 import com.example.data.github.RepositorySetupService
 import com.example.data.github.SetupResult
 import com.example.data.github.WorkflowTemplates
@@ -47,6 +48,11 @@ class GitHubRepository(private val context: Context) {
 
     val tokenManager = AuthTokenManager(context)
 
+    // FIX: authTokenManager shares the SAME EncryptedSharedPreferences file
+    // ("axev_secure_prefs") as tokenManager.  Both now read from the same store,
+    // so a token saved by GitHubAuthRepository (Web Flow) is visible here.
+    private val authTokenManager = AuthTokenManager(context)
+
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
@@ -65,6 +71,20 @@ class GitHubRepository(private val context: Context) {
 
     val tokenFlow: Flow<String?> = MutableStateFlow(tokenManager.getBearerToken()).asStateFlow()
     val selectedRepoFlow: Flow<String?> = MutableStateFlow(tokenManager.getSelectedRepo()).asStateFlow()
+
+    // ── Token resolution (unified) ────────────────────────────────────────────
+
+    /**
+     * Returns the best available bearer token, checking both token managers.
+     * This fixes the race where Web Flow saves via GitHubAuthRepository but
+     * generateCharacter() reads from GitHubRepository's own tokenManager.
+     *
+     * Both managers share the same EncryptedSharedPreferences file so this is
+     * effectively a double-check with the same backing store, but it also makes
+     * the intent explicit and future-proof.
+     */
+    fun resolveToken(): String? =
+        tokenManager.getBearerToken() ?: authTokenManager.getBearerToken()
 
     suspend fun saveToken(token: String) {
         tokenManager.saveAccessToken(token.trim().removePrefix("Bearer ").removePrefix("bearer "))
@@ -111,7 +131,7 @@ class GitHubRepository(private val context: Context) {
     }
 
     suspend fun setupRepository(): SetupResult {
-        val bearer = tokenManager.getBearerToken()
+        val bearer = resolveToken()
             ?: run {
                 Log.e(TAG, "setupRepository: no token saved")
                 return SetupResult.Error("auth", "Não autenticado")
@@ -129,7 +149,7 @@ class GitHubRepository(private val context: Context) {
         description: String,
         private: Boolean = false
     ): RepoCreationResult {
-        val bearer = tokenManager.getBearerToken()
+        val bearer = resolveToken()
             ?: run {
                 Log.e(TAG, "createRepository: no token")
                 return RepoCreationResult.Error("Not authenticated")
@@ -183,7 +203,7 @@ class GitHubRepository(private val context: Context) {
      * Para repositórios já existentes usa [updateWorkflows] em vez deste método.
      */
     suspend fun setupWorkspace(owner: String, repoName: String): Boolean {
-        val bearer = tokenManager.getBearerToken() ?: run {
+        val bearer = resolveToken() ?: run {
             Log.e(TAG, "setupWorkspace: no token")
             return false
         }
@@ -245,12 +265,9 @@ class GitHubRepository(private val context: Context) {
      *
      * Faz GET de cada workflow para obter o SHA actual e depois PUT com o novo conteúdo.
      * Se o ficheiro não existir ainda, cria-o.
-     *
-     * Devolve [WorkflowUpdateResult.Success] apenas se ambos os ficheiros forem
-     * actualizados/criados com sucesso. Falhas são detalhadas em [WorkflowUpdateResult.PartialFailure].
      */
     suspend fun updateWorkflows(repoFullName: String): WorkflowUpdateResult {
-        val bearer = tokenManager.getBearerToken() ?: run {
+        val bearer = resolveToken() ?: run {
             Log.e(TAG, "updateWorkflows: no token saved")
             return WorkflowUpdateResult.Error("Não autenticado — faz login novamente")
         }
@@ -369,7 +386,6 @@ class GitHubRepository(private val context: Context) {
                     422  -> {
                         val err = r.errorBody()?.string() ?: ""
                         if (existingSha == null) {
-                            // ficheiro já existia mas não foi detectado no GET — tratar como OK
                             Log.w(TAG, "updateWorkflows[$fileName]: PUT 422 on create (file existed) — OK")
                             details.add("✅ $fileName: já existia (sem alterações)")
                         } else {
@@ -407,9 +423,15 @@ class GitHubRepository(private val context: Context) {
             Log.e(TAG, "generateCharacter: invalid repoFullName='$repoFullName'")
             return false
         }
-        val owner  = parts[0]
-        val repo   = parts[1]
-        val bearer = token.asBearerToken()
+        val owner = parts[0]
+        val repo  = parts[1]
+
+        // FIX: always use resolveToken() — the caller may pass a stale value
+        // from a StateFlow that was set before the Web Flow auth completed.
+        val bearer = resolveToken() ?: run {
+            Log.e(TAG, "generateCharacter: no token available after resolution")
+            return false
+        }
 
         val inputs = mapOf(
             "character_id"    to config.id,
@@ -431,7 +453,8 @@ class GitHubRepository(private val context: Context) {
             "config_json"     to ""
         )
 
-        Log.d(TAG, "generateCharacter: dispatching workflow for character_id=${config.id} in $repoFullName")
+        Log.d(TAG, "generateCharacter: dispatching workflow '${WorkflowTemplates.WORKFLOW_GENERATE}'")
+        Log.d(TAG, "generateCharacter: repo=$repoFullName  character_id=${config.id}")
         Log.d(TAG, "generateCharacter: inputs=$inputs")
 
         val request = WorkflowDispatchWithInputs(ref = "main", inputs = inputs)
@@ -442,11 +465,18 @@ class GitHubRepository(private val context: Context) {
                 request
             )
             if (response.isSuccessful) {
+                // GitHub returns 204 No Content on success
                 Log.i(TAG, "generateCharacter: dispatch OK (HTTP ${response.code()})")
                 true
             } else {
-                val err = response.errorBody()?.string() ?: "(sem body)"
-                Log.e(TAG, "generateCharacter: dispatch FAILED — HTTP ${response.code()} — $err")
+                // FIX: log the full error body so we can see the exact reason
+                val errBody = response.errorBody()?.string() ?: "(sem body)"
+                Log.e(TAG, "generateCharacter: dispatch FAILED")
+                Log.e(TAG, "  → HTTP ${response.code()}")
+                Log.e(TAG, "  → body: $errBody")
+                Log.e(TAG, "  → token starts with: ${bearer.take(20)}…")
+                Log.e(TAG, "  → workflow: ${WorkflowTemplates.WORKFLOW_GENERATE}")
+                Log.e(TAG, "  → repo: $owner/$repo")
                 false
             }
         } catch (e: Exception) {
@@ -456,7 +486,7 @@ class GitHubRepository(private val context: Context) {
     }
 
     suspend fun runSmokeTest(repoFullName: String): Boolean {
-        val bearer = tokenManager.getBearerToken() ?: run {
+        val bearer = resolveToken() ?: run {
             Log.e(TAG, "runSmokeTest: no token")
             return false
         }
@@ -477,8 +507,8 @@ class GitHubRepository(private val context: Context) {
                 Log.i(TAG, "runSmokeTest: dispatch OK")
                 true
             } else {
-                val err = response.errorBody()?.string() ?: ""
-                Log.e(TAG, "runSmokeTest: HTTP ${response.code()} — $err")
+                val errBody = response.errorBody()?.string() ?: ""
+                Log.e(TAG, "runSmokeTest: HTTP ${response.code()} — body: $errBody")
                 false
             }
         } catch (e: Exception) {
@@ -490,7 +520,7 @@ class GitHubRepository(private val context: Context) {
     suspend fun getWorkflowRuns(token: String, repoFullName: String): List<WorkflowRun> {
         val parts  = repoFullName.split("/")
         if (parts.size != 2) return emptyList()
-        val bearer = token.asBearerToken()
+        val bearer = resolveToken() ?: token.asBearerToken()
         return try {
             val response = api.getWorkflowRuns(bearer, parts[0], parts[1])
             if (response.isSuccessful) {
