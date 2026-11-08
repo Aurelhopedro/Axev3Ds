@@ -25,14 +25,12 @@ sealed class UiState {
 
 sealed class AuthState {
     object Idle : AuthState()
-    /** Web Flow — URL pronto para abrir no browser */
     data class OpenBrowser(val authUrl: String) : AuthState()
-    /** A aguardar que o deep link chegue após o utilizador autorizar */
     object WaitingForCallback : AuthState()
     object Authenticated : AuthState()
     data class Failed(val message: String) : AuthState()
 
-    // Device Flow (legado — mantido para compatibilidade)
+    // Device Flow (legado)
     object RequestingCode : AuthState()
     data class WaitingForUser(
         val userCode: String,
@@ -93,41 +91,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Web Flow (principal) ──────────────────────────────────────────────────
+    // ── Web Flow ──────────────────────────────────────────────────────────────
 
-    /**
-     * Inicia o OAuth Web Flow.
-     * Constrói a URL de autorização e emite OpenBrowser para a UI abrir o browser.
-     */
     fun startGitHubAuth() {
         when (val result = authRepository.buildWebAuthUrl()) {
-            is AuthResult.WebFlowStarted -> {
-                _authState.value = AuthState.OpenBrowser(result.authUrl)
-            }
-            is AuthResult.Error -> {
-                _authState.value = AuthState.Failed(result.message)
-            }
+            is AuthResult.WebFlowStarted -> _authState.value = AuthState.OpenBrowser(result.authUrl)
+            is AuthResult.Error -> _authState.value = AuthState.Failed(result.message)
             else -> _authState.value = AuthState.Failed("Unexpected error starting auth")
         }
     }
 
-    /**
-     * Chamado pela MainActivity quando recebe o deep link axev3d://callback?token=xxx
-     */
     fun handleOAuthCallback(token: String) {
         when (val result = authRepository.handleWebCallback(token)) {
             is AuthResult.Success -> {
                 _authState.value = AuthState.Authenticated
                 viewModelScope.launch { refreshUserData() }
             }
-            is AuthResult.Error -> {
-                _authState.value = AuthState.Failed(result.message)
-            }
+            is AuthResult.Error -> _authState.value = AuthState.Failed(result.message)
             else -> _authState.value = AuthState.Failed("Unexpected callback error")
         }
     }
 
-    /** Chamado pela UI após abrir o browser — passa para estado de espera */
     fun onBrowserOpened() {
         _authState.value = AuthState.WaitingForCallback
     }
@@ -173,7 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val user = authRepository.fetchUser()
             if (user != null) {
                 _user.value = user
-                val t = authRepository.getTokenManager().getBearerToken() ?: return
+                val t = authRepository.tokenManager.getBearerToken() ?: return
                 _repos.value = repository.getRepos(t)
             }
         }
