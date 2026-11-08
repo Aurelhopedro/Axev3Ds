@@ -1,0 +1,99 @@
+name: AXEV CRIME — Gerar protagonista 3D
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Escolha um preset que existe no Ara 3D Gen"
+        required: true
+        type: choice
+        options:
+          - The Soldier
+          - The African Warrior
+          - The American Warrior
+          - The Police Officer
+          - The American Sheriff
+          - Detective
+        default: The Soldier
+      detail:
+        description: "Nível de detalhe"
+        required: true
+        type: choice
+        options:
+          - medium
+          - high
+        default: high
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axev-character-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate-character:
+    name: Gerar personagem e disponibilizar ficheiros
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Obter o repositório AXEV CRIME
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Obter Ara 3D Gen
+        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+
+      - name: Instalar dependências
+        working-directory: ara-3d-gen
+        run: npm install
+
+      - name: Preparar recursos 3D
+        working-directory: ara-3d-gen
+        run: npm run setup-assets
+
+      - name: Gerar personagem
+        working-directory: ara-3d-gen
+        env:
+          CHARACTER_PRESET: ${{ inputs.preset }}
+          CHARACTER_DETAIL: ${{ inputs.detail }}
+        run: |
+          mkdir -p out
+          npm run export -- --preset "$CHARACTER_PRESET" --detail "$CHARACTER_DETAIL" --out out
+
+      - name: Verificar exportação
+        run: |
+          test -d ara-3d-gen/out
+          test -n "$(find ara-3d-gen/out -type f -print -quit)"
+          echo "Ficheiros exportados:"
+          find ara-3d-gen/out -type f -printf '%p (%s bytes)\n'
+
+      - name: Criar nota de geração
+        working-directory: ara-3d-gen
+        env:
+          CHARACTER_PRESET: ${{ inputs.preset }}
+          CHARACTER_DETAIL: ${{ inputs.detail }}
+        run: |
+          cat > out/GERACAO_AXEV.txt <<EOF
+          AXEV CRIME — REGISTO DE GERAÇÃO
+          Preset solicitado: $CHARACTER_PRESET
+          Detalhe solicitado: $CHARACTER_DETAIL
+
+          NOTA:
+          Este registo confirma apenas as opções usadas na geração.
+          Os nomes de animações, ossos, expressões e capacidades só serão
+          documentados depois de inspeccionarmos os dados reais do GLB exportado.
+          Não assumir que uma animação existe sem a encontrar no ficheiro.
+          EOF
+
+      - name: Disponibilizar ficheiros para descarregar
+        uses: actions/upload-artifact@v4
+        with:
+          name: axev-crime-personagem-${{ github.run_number }}
+          path: ara-3d-gen/out/**
+          if-no-files-found: error
+          retention-days: 7
