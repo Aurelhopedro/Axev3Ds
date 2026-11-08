@@ -20,7 +20,7 @@ import com.example.ui.screens.CreateRepoScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoSelectionScreen
-import com.example.ui.theme.AxevTheme
+import com.example.ui.theme.AXEVCRIME3DSTUDIOTheme
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AxevTheme {
+            AXEVCRIME3DSTUDIOTheme {
                 val navController = rememberNavController()
                 val authState by viewModel.authState.collectAsState()
                 val selectedRepo by viewModel.selectedRepo.collectAsState()
