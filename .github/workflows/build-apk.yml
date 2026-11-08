@@ -25,22 +25,19 @@ jobs:
         run: |
           mkdir -p gradle/wrapper
           curl -Lo gradle/wrapper/gradle-wrapper.jar \
-            https://github.com/gradle/gradle/raw/v8.9.0/gradle/wrapper/gradle-wrapper.jar
+            https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar
 
       - name: Create local.properties
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Create google-services.json
-        run: |
-          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > app/google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > app/google-services.json
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Create .env file with secrets
-        run: |
-          echo "GH_CLIENT_ID=${{ secrets.GH_CLIENT_ID }}" > .env
+        run: echo "GH_CLIENT_ID=${{ secrets.GH_CLIENT_ID }}" > .env
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
