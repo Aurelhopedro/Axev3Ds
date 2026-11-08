@@ -6,13 +6,14 @@ import retrofit2.http.*
 
 interface GitHubApi {
 
-    // ── Autenticação (Device Flow) ────────────────────────────────────────────
+    // ── GitHub Device Flow ────────────────────────────────────────────────────
+    // These endpoints hit https://github.com/ (not api.github.com)
 
     @FormUrlEncoded
     @POST("login/device/code")
     suspend fun requestDeviceCode(
         @Field("client_id") clientId: String,
-        @Field("scope") scope: String = "repo public_repo read:user"
+        @Field("scope") scope: String = "public_repo read:user"
     ): Response<DeviceCodeResponse>
 
     @FormUrlEncoded
@@ -23,7 +24,8 @@ interface GitHubApi {
         @Field("grant_type") grantType: String = "urn:ietf:params:oauth:grant-type:device_code"
     ): Response<AccessTokenResponse>
 
-    // ── Utilizador ────────────────────────────────────────────────────────────
+    // ── User ──────────────────────────────────────────────────────────────────
+    // These endpoints hit https://api.github.com/
 
     @GET("user")
     suspend fun getUser(
@@ -33,10 +35,11 @@ interface GitHubApi {
     @GET("user/repos")
     suspend fun getRepos(
         @Header("Authorization") token: String,
-        @Query("sort") sort: String = "updated"
+        @Query("sort") sort: String = "updated",
+        @Query("per_page") perPage: Int = 50
     ): Response<List<GitHubRepo>>
 
-    // ── Repositórios ─────────────────────────────────────────────────────────
+    // ── Repositories ──────────────────────────────────────────────────────────
 
     @POST("user/repos")
     suspend fun createRepo(
@@ -72,7 +75,7 @@ interface GitHubApi {
     ): Response<ArtifactsResponse>
 }
 
-// ── Modelos de Device Flow ────────────────────────────────────────────────────
+// ── Device Flow Models ────────────────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)
 data class DeviceCodeResponse(
@@ -85,14 +88,14 @@ data class DeviceCodeResponse(
 
 @JsonClass(generateAdapter = true)
 data class AccessTokenResponse(
-    val access_token: String?,
-    val token_type: String?,
-    val scope: String?,
-    val error: String?,
-    val error_description: String?
+    val access_token: String? = null,
+    val token_type: String? = null,
+    val scope: String? = null,
+    val error: String? = null,
+    val error_description: String? = null
 )
 
-// ── Modelos de Repositório ────────────────────────────────────────────────────
+// ── Repository Models ─────────────────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)
 data class CreateRepoRequest(
@@ -102,13 +105,13 @@ data class CreateRepoRequest(
     val auto_init: Boolean = true
 )
 
-// ── Modelos Existentes ────────────────────────────────────────────────────────
+// ── Core Models ───────────────────────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)
 data class GitHubUser(
     val login: String,
     val avatar_url: String,
-    val name: String?
+    val name: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -116,7 +119,7 @@ data class GitHubRepo(
     val name: String,
     val full_name: String,
     val owner: GitHubUser,
-    val default_branch: String,
+    val default_branch: String = "main",
     val html_url: String = "",
     val description: String? = null,
     val private: Boolean = false,
@@ -140,10 +143,10 @@ data class WorkflowRun(
     val id: Long,
     val name: String,
     val status: String,
-    val conclusion: String?,
+    val conclusion: String? = null,
     val created_at: String,
     val updated_at: String,
-    val html_url: String
+    val html_url: String = ""
 )
 
 @JsonClass(generateAdapter = true)
