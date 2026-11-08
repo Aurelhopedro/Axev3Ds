@@ -40,7 +40,8 @@ import com.example.ui.theme.TacticalOrange
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
-    onNavigateToCreateRepo: (() -> Unit)? = null
+    onNavigateToCreateRepo: (() -> Unit)? = null,
+    onNavigateToViewer: (() -> Unit)? = null       // ← Magic Box
 ) {
     val user           by viewModel.user.collectAsState()
     val repo           by viewModel.selectedRepo.collectAsState()
@@ -85,6 +86,30 @@ fun DashboardScreen(
                 onLogout  = { showLogoutDialog = true }
             )
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // ── Botão principal — Generate Character ──────────────────────────
+        item {
+            if (repo != null && onNavigateToViewer != null) {
+                Button(
+                    onClick = {
+                        viewModel.generate()
+                        onNavigateToViewer()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = TacticalOrange),
+                    shape  = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "⚡  Generate Character",
+                        fontWeight = FontWeight.Bold,
+                        color      = Color.Black
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
 
         // ── Criar repo (se ainda não existe) ─────────────────────────────
