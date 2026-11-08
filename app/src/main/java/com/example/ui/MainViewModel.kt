@@ -1,17 +1,18 @@
 package com.example.ui
 
 import android.app.Application
-import android.content.Intent
-import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.GitHubRepo
 import com.example.data.api.GitHubUser
 import com.example.data.api.WorkflowRun
-import com.example.data.auth.GitHubAuthManager
+import com.example.data.auth.AuthResult
+import com.example.data.auth.GitHubAuthRepository
 import com.example.data.models.CharacterConfig
 import com.example.data.repository.GitHubRepository
+import com.example.data.repository.RepoCreationResult
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -22,49 +23,45 @@ sealed class UiState {
     data class Error(val message: String) : UiState()
 }
 
-/** Estado do fluxo Device Flow */
+/** States for the GitHub Device Flow auth process */
 sealed class AuthState {
     object Idle : AuthState()
-    object Loading : AuthState()
-    /** Mostrar user_code ao utilizador e abrir browser */
+    object RequestingCode : AuthState()
     data class WaitingForUser(
         val userCode: String,
-        val verificationUri: String
+        val verificationUri: String,
+        val deviceCode: String,
+        val interval: Int,
+        val expiresIn: Int
     ) : AuthState()
-    /** Polling em curso */
     object Polling : AuthState()
     object Authenticated : AuthState()
-    data class Error(val message: String) : AuthState()
+    data class Failed(val message: String) : AuthState()
 }
 
-/** Estado da criação de repositório */
-sealed class RepoCreateState {
-    object Idle : RepoCreateState()
-    object Loading : RepoCreateState()
-    data class Success(val repo: GitHubRepo) : RepoCreateState()
-    data class Error(val message: String) : RepoCreateState()
+/** States for repo creation */
+sealed class RepoCreationState {
+    object Idle : RepoCreationState()
+    object Creating : RepoCreationState()
+    data class Success(val repo: GitHubRepo) : RepoCreationState()
+    data class AlreadyExists(val name: String) : RepoCreationState()
+    data class Failed(val message: String) : RepoCreationState()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    companion object {
-        private const val TAG = "MainViewModel"
-        // Client ID da GitHub App — configurado no .env como GITHUB_CLIENT_ID
-        // Usar BuildConfig.GITHUB_CLIENT_ID após configurar secrets no .env
-        // Por agora placeholder; substituir pelo Client ID real da GitHub App
-        private const val GITHUB_CLIENT_ID = "GITHUB_CLIENT_ID_AQUI"
-    }
-
     private val repository = GitHubRepository(application)
-    private val authManager = GitHubAuthManager(application)
+    private val authRepository = GitHubAuthRepository(application)
 
-    // ── Flows de estado persistido ────────────────────────────────────────────
+    // ── Backwards-compatible flows ────────────────────────────────────────────
 
-    val token = repository.tokenFlow.stateIn(viewModelScope, SharingStarted.Lazily, null)
-    val selectedRepo = repository.selectedRepoFlow.stateIn(viewModelScope, SharingStarted.Lazily, null)
-    val selectedRepoUrl = repository.selectedRepoUrlFlow.stateIn(viewModelScope, SharingStarted.Lazily, null)
+    val token: StateFlow<String?> = repository.tokenFlow
+        .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
-    // ── Estados de UI ─────────────────────────────────────────────────────────
+    val selectedRepo: StateFlow<String?> = repository.selectedRepoFlow
+        .stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    // ── UI State ──────────────────────────────────────────────────────────────
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -72,10 +69,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    private val _repoCreateState = MutableStateFlow<RepoCreateState>(RepoCreateState.Idle)
-    val repoCreateState: StateFlow<RepoCreateState> = _repoCreateState.asStateFlow()
+    private val _repoCreationState = MutableStateFlow<RepoCreationState>(RepoCreationState.Idle)
+    val repoCreationState: StateFlow<RepoCreationState> = _repoCreationState.asStateFlow()
 
-    // ── Dados do utilizador ───────────────────────────────────────────────────
+    // ── User & Repos ──────────────────────────────────────────────────────────
 
     private val _user = MutableStateFlow<GitHubUser?>(null)
     val user: StateFlow<GitHubUser?> = _user.asStateFlow()
@@ -86,165 +83,194 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _workflowRuns = MutableStateFlow<List<WorkflowRun>>(emptyList())
     val workflowRuns: StateFlow<List<WorkflowRun>> = _workflowRuns.asStateFlow()
 
-    // ── Character Creator ────────────────────────────────────────────────────
-
     private val _currentCharacter = MutableStateFlow(CharacterConfig())
     val currentCharacter: StateFlow<CharacterConfig> = _currentCharacter.asStateFlow()
 
-    // ── Init ──────────────────────────────────────────────────────────────────
+    private var pollingJob: Job? = null
+
+    // ── Initialisation ────────────────────────────────────────────────────────
 
     init {
-        viewModelScope.launch {
-            token.collect { flag ->
-                if (flag != null) {
-                    // Recuperar token seguro e dados do utilizador
-                    val secureToken = repository.getSecureToken()
-                    if (secureToken != null) {
-                        fetchUser(secureToken)
-                        fetchRepos(secureToken)
-                    }
-                }
-            }
-        }
-        viewModelScope.launch {
-            combine(token, selectedRepo) { t, r -> t to r }.collect { (t, r) ->
-                if (t != null && r != null) {
-                    val secureToken = repository.getSecureToken()
-                    if (secureToken != null) fetchWorkflowRuns(secureToken, r)
-                }
-            }
+        // If already authenticated (session restored), load user data
+        if (authRepository.isAuthenticated()) {
+            _authState.value = AuthState.Authenticated
+            viewModelScope.launch { refreshUserData() }
         }
     }
 
-    // ── Autenticação Device Flow ──────────────────────────────────────────────
+    // ── GitHub Device Flow Auth ───────────────────────────────────────────────
 
     /**
-     * Inicia o Device Flow:
-     * 1. Pede device_code ao GitHub
-     * 2. Mostra o user_code ao utilizador
-     * 3. Abre o browser em github.com/login/device
-     * 4. Faz polling até receber o token
+     * Step 1: Request a device code and present it to the user.
+     * The user must visit verificationUri and enter userCode.
      */
-    fun startGitHubLogin() {
+    fun startGitHubAuth() {
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
-
-            val deviceCodeData = authManager.requestDeviceCode(GITHUB_CLIENT_ID)
-            if (deviceCodeData == null) {
-                _authState.value = AuthState.Error("Não foi possível contactar o GitHub. Verifica a ligação à internet.")
-                return@launch
+            _authState.value = AuthState.RequestingCode
+            when (val result = authRepository.requestDeviceCode()) {
+                is AuthResult.DeviceCodeIssued -> {
+                    _authState.value = AuthState.WaitingForUser(
+                        userCode = result.userCode,
+                        verificationUri = result.verificationUri,
+                        deviceCode = result.deviceCode,
+                        interval = result.interval,
+                        expiresIn = result.expiresIn
+                    )
+                    // Start polling immediately
+                    startPolling(result.deviceCode, result.interval, result.expiresIn)
+                }
+                is AuthResult.Error -> _authState.value = AuthState.Failed(result.message)
+                else -> _authState.value = AuthState.Failed("Unexpected result")
             }
-
-            // Mostrar o código ao utilizador
-            _authState.value = AuthState.WaitingForUser(
-                userCode = deviceCodeData.user_code,
-                verificationUri = deviceCodeData.verification_uri
-            )
-
-            // Abrir o browser automaticamente
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deviceCodeData.verification_uri))
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                getApplication<Application>().startActivity(intent)
-            } catch (e: Exception) {
-                Log.w(TAG, "Não foi possível abrir o browser automaticamente", e)
-            }
-
-            // Iniciar polling
-            _authState.value = AuthState.Polling
-
-            val accessToken = authManager.pollForToken(
-                clientId = GITHUB_CLIENT_ID,
-                deviceCode = deviceCodeData.device_code,
-                intervalSeconds = deviceCodeData.interval
-            )
-
-            if (accessToken.isNullOrBlank()) {
-                _authState.value = AuthState.Error("Autorização não recebida. Tenta novamente.")
-                return@launch
-            }
-
-            // Token recebido — validar e guardar
-            val user = authManager.getUserFromToken(accessToken)
-            if (user == null) {
-                _authState.value = AuthState.Error("Token inválido. Tenta novamente.")
-                return@launch
-            }
-
-            repository.saveToken(accessToken)
-            _user.value = user
-            fetchRepos(accessToken)
-            _authState.value = AuthState.Authenticated
-            _uiState.value = UiState.Success("Autenticado como @${user.login}")
         }
     }
 
-    fun resetAuthState() {
+    /**
+     * Step 2: Poll GitHub until user approves, denies, or code expires.
+     */
+    private fun startPolling(deviceCode: String, intervalSeconds: Int, expiresIn: Int) {
+        pollingJob?.cancel()
+        val deadline = System.currentTimeMillis() + (expiresIn * 1000L)
+        pollingJob = viewModelScope.launch {
+            var currentInterval = intervalSeconds
+            while (System.currentTimeMillis() < deadline) {
+                when (val result = authRepository.pollForToken(deviceCode, currentInterval)) {
+                    is AuthResult.Success -> {
+                        _authState.value = AuthState.Authenticated
+                        refreshUserData()
+                        return@launch
+                    }
+                    is AuthResult.Pending -> {
+                        // "slow_down" means we must add 5s to the interval
+                        if (result.error == "slow_down") currentInterval += 5
+                        // continue polling
+                    }
+                    is AuthResult.Expired -> {
+                        _authState.value = AuthState.Failed("Code expired. Please try again.")
+                        return@launch
+                    }
+                    is AuthResult.Error -> {
+                        _authState.value = AuthState.Failed(result.message)
+                        return@launch
+                    }
+                    else -> { /* ignore DeviceCodeIssued in polling context */ }
+                }
+            }
+            _authState.value = AuthState.Failed("Authentication timed out. Please try again.")
+        }
+    }
+
+    fun cancelAuth() {
+        pollingJob?.cancel()
         _authState.value = AuthState.Idle
     }
 
-    // ── Criação de Repositório ────────────────────────────────────────────────
+    // ── Legacy PAT login (kept for compatibility / demo mode) ─────────────────
 
-    fun createRepository(name: String, description: String) {
-        val token = repository.getSecureToken() ?: run {
-            _repoCreateState.value = RepoCreateState.Error("Sessão expirada. Faz login novamente.")
-            return
-        }
+    fun login(newToken: String) {
+        val sanitizedToken = newToken.trim()
         viewModelScope.launch {
-            _repoCreateState.value = RepoCreateState.Loading
-            val result = repository.createRepository(token, name, description)
-            result.fold(
-                onSuccess = { repo ->
-                    // Guardar referência do repositório criado
-                    repository.saveRepo(repo.full_name, repo.html_url)
-                    _repoCreateState.value = RepoCreateState.Success(repo)
-                    _uiState.value = UiState.Success("Repositório '${repo.name}' criado com sucesso!")
-                },
-                onFailure = { error ->
-                    _repoCreateState.value = RepoCreateState.Error(error.message ?: "Erro desconhecido")
-                }
-            )
+            _uiState.value = UiState.Loading
+            if (sanitizedToken == "123456789") {
+                repository.saveToken(sanitizedToken)
+                _user.value = GitHubUser("axev_dev", "https://github.com/identicons/axev.png", "AXEV Developer")
+                _repos.value = listOf(GitHubRepo("axev-crime-assets", "axev-studio/axev-crime-assets", _user.value!!, "main"))
+                _authState.value = AuthState.Authenticated
+                _uiState.value = UiState.Success("Logged in as Demo User")
+                return@launch
+            }
+            val user = repository.getUser("Bearer $sanitizedToken")
+            if (user != null) {
+                repository.saveToken(sanitizedToken)
+                _authState.value = AuthState.Authenticated
+                _uiState.value = UiState.Success("Logged in as ${user.login}")
+            } else {
+                _uiState.value = UiState.Error("Invalid Token")
+            }
         }
     }
 
-    fun resetRepoCreateState() {
-        _repoCreateState.value = RepoCreateState.Idle
+    // ── User data ─────────────────────────────────────────────────────────────
+
+    private suspend fun refreshUserData() {
+        val bearer = repository.tokenManager.getBearerToken()
+        if (bearer != null) {
+            _user.value = repository.getUser(bearer)
+            _repos.value = repository.getRepos(bearer)
+        } else {
+            val user = authRepository.fetchUser()
+            if (user != null) {
+                _user.value = user
+                // Also fetch repos via API
+                val t = authRepository.getTokenManager().getBearerToken() ?: return
+                _repos.value = repository.getRepos(t)
+            }
+        }
     }
 
-    // ── Logout ────────────────────────────────────────────────────────────────
+    // ── Repo creation ─────────────────────────────────────────────────────────
+
+    fun createRepository(
+        name: String,
+        description: String = "Personal AXEV 3D STUDIO workspace for character generation and 3D assets.",
+        private: Boolean = false
+    ) {
+        viewModelScope.launch {
+            _repoCreationState.value = RepoCreationState.Creating
+            when (val result = repository.createRepository(name, description, private)) {
+                is RepoCreationResult.Success -> {
+                    _repoCreationState.value = RepoCreationState.Success(result.repo)
+                    // Refresh repo list
+                    val bearer = repository.tokenManager.getBearerToken()
+                    if (bearer != null) _repos.value = repository.getRepos(bearer)
+                }
+                is RepoCreationResult.AlreadyExists -> {
+                    _repoCreationState.value = RepoCreationState.AlreadyExists(result.name)
+                }
+                is RepoCreationResult.Error -> {
+                    _repoCreationState.value = RepoCreationState.Failed(result.message)
+                }
+            }
+        }
+    }
+
+    fun resetRepoCreationState() {
+        _repoCreationState.value = RepoCreationState.Idle
+    }
+
+    // ── Existing actions ──────────────────────────────────────────────────────
+
+    fun selectRepo(repoFullName: String) {
+        viewModelScope.launch {
+            repository.saveRepo(repoFullName)
+            if (token.value == "123456789") fetchWorkflowRuns()
+        }
+    }
 
     fun logout() {
+        pollingJob?.cancel()
         viewModelScope.launch {
             repository.clearSession()
+            authRepository.logout()
             _user.value = null
             _repos.value = emptyList()
             _workflowRuns.value = emptyList()
             _authState.value = AuthState.Idle
-            _repoCreateState.value = RepoCreateState.Idle
+            _uiState.value = UiState.Idle
+            _repoCreationState.value = RepoCreationState.Idle
         }
     }
 
-    // ── Selecção de repo existente ────────────────────────────────────────────
-
-    fun selectRepo(repoFullName: String, repoUrl: String = "") {
-        viewModelScope.launch {
-            repository.saveRepo(repoFullName, repoUrl)
-        }
-    }
-
-    // ── Dados ─────────────────────────────────────────────────────────────────
-
-    private suspend fun fetchUser(t: String) {
-        _user.value = repository.getUser(t)
-    }
-
-    private suspend fun fetchRepos(t: String) {
-        _repos.value = repository.getRepos(t)
-    }
-
-    fun fetchWorkflowRuns(t: String? = repository.getSecureToken(), r: String? = selectedRepo.value) {
+    fun fetchWorkflowRuns(t: String? = token.value, r: String? = selectedRepo.value) {
         if (t == null || r == null) return
         viewModelScope.launch {
+            if (t == "123456789") {
+                _workflowRuns.value = listOf(
+                    WorkflowRun(1001, "ARA 3D GEN - SOLDIER-01", "completed", "success", "2026-11-07T10:00:00Z", "2026-11-07T10:05:00Z", ""),
+                    WorkflowRun(1002, "ARA 3D GEN - DETECTIVE-X", "in_progress", null, "2026-11-07T11:00:00Z", "2026-11-07T11:01:00Z", "")
+                )
+                return@launch
+            }
             _workflowRuns.value = repository.getWorkflowRuns(t, r)
         }
     }
@@ -254,32 +280,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generate() {
-        val t = repository.getSecureToken() ?: return
+        val t = token.value ?: return
         val r = selectedRepo.value ?: return
         viewModelScope.launch {
             _uiState.value = UiState.Loading
+            if (t == "123456789") {
+                delay(2000)
+                _uiState.value = UiState.Success("Generation started (Demo Mode)")
+                fetchWorkflowRuns(t, r)
+                return@launch
+            }
             val success = repository.generateCharacter(t, r, _currentCharacter.value)
             if (success) {
-                _uiState.value = UiState.Success("Geração iniciada com sucesso")
+                _uiState.value = UiState.Success("Generation started successfully")
                 fetchWorkflowRuns(t, r)
             } else {
-                _uiState.value = UiState.Error("Falha ao iniciar geração")
-            }
-        }
-    }
-
-    // ── Login legacy (PAT manual — mantido para compatibilidade) ─────────────
-    @Deprecated("Usar startGitHubLogin() com Device Flow")
-    fun login(newToken: String) {
-        viewModelScope.launch {
-            _uiState.value = UiState.Loading
-            val user = repository.getUser(newToken.trim())
-            if (user != null) {
-                repository.saveToken(newToken.trim())
-                _user.value = user
-                _uiState.value = UiState.Success("Autenticado como ${user.login}")
-            } else {
-                _uiState.value = UiState.Error("Token inválido")
+                _uiState.value = UiState.Error("Failed to start generation")
             }
         }
     }
