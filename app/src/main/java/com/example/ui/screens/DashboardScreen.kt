@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -28,9 +30,10 @@ import com.example.ui.components.TacticalCard
 import com.example.ui.theme.TacticalOrange
 
 @Composable
-fun DashboardScreen(viewModel: MainViewModel) {
+fun DashboardScreen(viewModel: MainViewModel, onCreateRepo: () -> Unit = {}) {
     val user by viewModel.user.collectAsState()
     val repo by viewModel.selectedRepo.collectAsState()
+    val repoUrl by viewModel.selectedRepoUrl.collectAsState()
     val runs by viewModel.workflowRuns.collectAsState()
 
     LazyColumn(
@@ -41,7 +44,20 @@ fun DashboardScreen(viewModel: MainViewModel) {
     ) {
         item {
             UserHeader(user, repo, onRefresh = { viewModel.fetchWorkflowRuns() })
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Botão "Create My 3D Repository" ──────────────────────────────
+            Button(
+                onClick = onCreateRepo,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292E))
+            ) {
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("CREATE MY 3D REPOSITORY", fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
             QuickStats(runs)
             Spacer(modifier = Modifier.height(24.dp))
             SectionHeader(title = "Recent Activity")
@@ -50,7 +66,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
         if (runs.isEmpty()) {
             item {
                 Text(
-                    text = "No recent generations found.",
+                    text = "Nenhuma geração recente encontrada.",
                     modifier = Modifier.padding(vertical = 32.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
@@ -89,12 +105,19 @@ fun UserHeader(user: com.example.data.api.GitHubUser?, repo: String?, onRefresh:
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = user?.name ?: user?.login ?: "Unknown User",
+                    text = "@${user?.login ?: "..."}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+                if (user?.name != null) {
+                    Text(
+                        text = user.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
                 Text(
-                    text = repo ?: "No repository selected",
+                    text = repo ?: "Nenhum repositório selecionado",
                     style = MaterialTheme.typography.labelSmall,
                     color = TacticalOrange
                 )
