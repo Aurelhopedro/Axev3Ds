@@ -361,7 +361,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val success = repository.generateCharacter(t, r, _currentCharacter.value)
+            val config = _currentCharacter.value
+
+            val success = repository.generateCharacter(t, r, config)
             if (!success) {
                 _generationStatus.value = GenerationStatus.Failed(
                     "Something went wrong while starting. Please try again."
@@ -374,12 +376,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = UiState.Success("Generation started")
             fetchWorkflowRuns(t, r)
 
-            val characterId = _currentCharacter.value.name
-                .lowercase()
-                .replace(" ", "_")
-                .ifBlank { "character" }
+            // FIX: usar config.id (que é o character_id enviado ao workflow),
+            // não config.name. O artifact é publicado como AXEV-CHARACTER-{config.id}
+            // e o polling filtra por este valor — sem este fix o artifact
+            // nunca era encontrado e o estado ficava em Processing até timeout.
+            val characterId = config.id
 
-            generationRepo.pollUntilReady(r, characterId, lastDispatchedAt)
+            generationRepo.pollUntilReady(r, characterId, lastDispatchedAt, config.quality)
                 .collect { status -> _generationStatus.value = status }
         }
     }
