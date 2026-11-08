@@ -84,9 +84,19 @@ object WorkflowOptions {
 
     val QUALITY = listOf("low", "medium", "high")
 
+    // FIX: lista sincronizada com o workflow real ara-axev-crime.yml.
+    // A versão anterior só tinha glb/fbx/glb,fbx/zip — faltavam obj e combinações,
+    // o que causava falha na validação do workflow (exit 1) quando o utilizador
+    // seleccionava um formato não listado no ALLOWED do script bash.
     val EXPORT_FORMATS = listOf(
-        "glb", "fbx", "obj", "zip",
-        "glb,fbx", "glb,obj", "glb,fbx,obj", "glb,fbx,obj,zip"
+        "glb",
+        "fbx",
+        "obj",
+        "zip",
+        "glb,fbx",
+        "glb,obj",
+        "glb,fbx,obj",
+        "glb,fbx,obj,zip"
     )
 }
 
