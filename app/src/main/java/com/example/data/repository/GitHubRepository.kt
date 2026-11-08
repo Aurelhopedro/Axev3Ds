@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.example.data.api.CreateFileRequest
 import com.example.data.api.CreateRepoRequest
 import com.example.data.api.GitHubApi
@@ -181,6 +182,12 @@ class GitHubRepository(private val context: Context) {
         val repo   = parts[1]
         val bearer = token.asBearerToken()
 
+        // FIX: config_json enviado vazio em vez de serializar o CharacterConfig completo.
+        // Serializar o objeto inteiro gerava um JSON grande com campos nested (Identity,
+        // Appearance, etc.) que, ao ser re-serializado dentro do payload JSON do dispatch,
+        // podia corromper o pedido ou exceder limites da GitHub API (422 silencioso).
+        // O workflow usa config_json apenas como campo opcional de debug — todos os
+        // parâmetros reais já chegam pelos inputs individuais acima.
         val inputs = mapOf(
             "character_id"    to config.id,
             "character_name"  to config.name,
@@ -198,7 +205,7 @@ class GitHubRepository(private val context: Context) {
             "rig_anim"        to config.rigAnim,
             "quality"         to config.quality,
             "export_formats"  to config.exportFormats,
-            "config_json"     to moshi.adapter(CharacterConfig::class.java).toJson(config)
+            "config_json"     to ""  // vazio — evita payload corrompido
         )
 
         val request = WorkflowDispatchWithInputs(ref = "main", inputs = inputs)
@@ -208,8 +215,13 @@ class GitHubRepository(private val context: Context) {
                 WorkflowTemplates.WORKFLOW_GENERATE,
                 request
             )
+            // FIX: logging do erro para diagnóstico — aparece no Logcat como "AXEV/Dispatch"
+            if (!response.isSuccessful) {
+                Log.e("AXEV", "Dispatch failed: HTTP ${response.code()} — ${response.errorBody()?.string()}")
+            }
             response.isSuccessful
         } catch (e: Exception) {
+            Log.e("AXEV", "Dispatch exception: ${e.message}", e)
             false
         }
     }
