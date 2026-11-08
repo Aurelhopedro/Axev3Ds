@@ -25,6 +25,14 @@ sealed class UiState {
 
 sealed class AuthState {
     object Idle : AuthState()
+    /** Web Flow — URL pronto para abrir no browser */
+    data class OpenBrowser(val authUrl: String) : AuthState()
+    /** A aguardar que o deep link chegue após o utilizador autorizar */
+    object WaitingForCallback : AuthState()
+    object Authenticated : AuthState()
+    data class Failed(val message: String) : AuthState()
+
+    // Device Flow (legado — mantido para compatibilidade)
     object RequestingCode : AuthState()
     data class WaitingForUser(
         val userCode: String,
@@ -34,8 +42,6 @@ sealed class AuthState {
         val expiresIn: Int
     ) : AuthState()
     object Polling : AuthState()
-    object Authenticated : AuthState()
-    data class Failed(val message: String) : AuthState()
 }
 
 sealed class RepoCreationState {
@@ -87,56 +93,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── GitHub Device Flow Auth ───────────────────────────────────────────────
+    // ── Web Flow (principal) ──────────────────────────────────────────────────
 
+    /**
+     * Inicia o OAuth Web Flow.
+     * Constrói a URL de autorização e emite OpenBrowser para a UI abrir o browser.
+     */
     fun startGitHubAuth() {
-        viewModelScope.launch {
-            _authState.value = AuthState.RequestingCode
-            when (val result = authRepository.requestDeviceCode()) {
-                is AuthResult.DeviceCodeIssued -> {
-                    _authState.value = AuthState.WaitingForUser(
-                        userCode = result.userCode,
-                        verificationUri = result.verificationUri,
-                        deviceCode = result.deviceCode,
-                        interval = result.interval,
-                        expiresIn = result.expiresIn
-                    )
-                    startPolling(result.deviceCode, result.interval, result.expiresIn)
-                }
-                is AuthResult.Error -> _authState.value = AuthState.Failed(result.message)
-                else -> _authState.value = AuthState.Failed("Unexpected result")
+        when (val result = authRepository.buildWebAuthUrl()) {
+            is AuthResult.WebFlowStarted -> {
+                _authState.value = AuthState.OpenBrowser(result.authUrl)
             }
+            is AuthResult.Error -> {
+                _authState.value = AuthState.Failed(result.message)
+            }
+            else -> _authState.value = AuthState.Failed("Unexpected error starting auth")
         }
     }
 
-    private fun startPolling(deviceCode: String, intervalSeconds: Int, expiresIn: Int) {
-        pollingJob?.cancel()
-        val deadline = System.currentTimeMillis() + (expiresIn * 1000L)
-        pollingJob = viewModelScope.launch {
-            var currentInterval = intervalSeconds
-            while (System.currentTimeMillis() < deadline) {
-                when (val result = authRepository.pollForToken(deviceCode, currentInterval)) {
-                    is AuthResult.Success -> {
-                        _authState.value = AuthState.Authenticated
-                        refreshUserData()
-                        return@launch
-                    }
-                    is AuthResult.Pending -> {
-                        if (result.error == "slow_down") currentInterval += 5
-                    }
-                    is AuthResult.Expired -> {
-                        _authState.value = AuthState.Failed("Code expired. Please try again.")
-                        return@launch
-                    }
-                    is AuthResult.Error -> {
-                        _authState.value = AuthState.Failed(result.message)
-                        return@launch
-                    }
-                    else -> {}
-                }
+    /**
+     * Chamado pela MainActivity quando recebe o deep link axev3d://callback?token=xxx
+     */
+    fun handleOAuthCallback(token: String) {
+        when (val result = authRepository.handleWebCallback(token)) {
+            is AuthResult.Success -> {
+                _authState.value = AuthState.Authenticated
+                viewModelScope.launch { refreshUserData() }
             }
-            _authState.value = AuthState.Failed("Authentication timed out. Please try again.")
+            is AuthResult.Error -> {
+                _authState.value = AuthState.Failed(result.message)
+            }
+            else -> _authState.value = AuthState.Failed("Unexpected callback error")
         }
+    }
+
+    /** Chamado pela UI após abrir o browser — passa para estado de espera */
+    fun onBrowserOpened() {
+        _authState.value = AuthState.WaitingForCallback
     }
 
     fun cancelAuth() {
@@ -196,7 +189,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _repoCreationState.value = RepoCreationState.Creating
 
-            // Demo mode — simulate success without calling the real API
             if (token.value == "123456789") {
                 delay(1500)
                 val demoRepo = GitHubRepo(
