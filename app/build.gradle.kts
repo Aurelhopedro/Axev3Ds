@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.aurelhopedro.axev3ds"
+    namespace = "com.example"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.aurelhopedro.axev3ds"
+        applicationId = "com.example.axev3ds"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
