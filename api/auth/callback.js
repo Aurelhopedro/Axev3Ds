@@ -5,27 +5,38 @@ export default async function handler(req, res) {
   const code  = searchParams.get('code');
   const error = searchParams.get('error');
 
-  if (error) return res.status(400).json({ error });
-  if (!code)  return res.status(400).json({ error: 'Missing code' });
+  if (error) {
+    return res.status(400).json({ step: 'github_error', error });
+  }
+
+  if (!code) {
+    return res.status(400).json({ step: 'missing_code' });
+  }
 
   const clientId     = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
+  const diag = {
+    step: 'before_token_exchange',
+    code_length: code.length,
+    code_prefix: code.substring(0, 6),
+    client_id_full: clientId,
+    client_secret_length: clientSecret ? clientSecret.length : 0,
+    client_secret_prefix: clientSecret ? clientSecret.substring(0, 10) : 'MISSING',
+    redirect_uri_sent: 'https://provedoraxev3ds.vercel.app/api/auth/callback',
+  };
+
   if (!clientId || !clientSecret) {
-    return res.status(500).json({
-      error: 'env_missing',
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-    });
+    return res.status(500).json({ ...diag, step: 'env_vars_missing' });
   }
 
   try {
-    const body = JSON.stringify({
+    const requestBody = {
       client_id:     clientId,
       client_secret: clientSecret,
       code,
-      redirect_uri: 'https://provedoraxev3ds.vercel.app/api/auth/callback',
-    });
+      redirect_uri:  'https://provedoraxev3ds.vercel.app/api/auth/callback',
+    };
 
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
@@ -33,39 +44,40 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body,
+      body: JSON.stringify(requestBody),
     });
 
     const rawText = await tokenRes.text();
     let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      data = { raw: rawText };
-    }
+    try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
 
     if (data.error || !data.access_token) {
       return res.status(401).json({
-        github_status: tokenRes.status,
+        ...diag,
+        step: 'token_exchange_failed',
+        http_status: tokenRes.status,
+        http_status_text: tokenRes.statusText,
+        response_headers: Object.fromEntries(tokenRes.headers.entries()),
         github_response: data,
-        client_id_prefix: clientId.substring(0, 8),
-        client_secret_prefix: clientSecret.substring(0, 6),
-        code_length: code.length,
-        redirect_uri_sent: 'https://provedoraxev3ds.vercel.app/api/auth/callback',
+        request_body_sent: {
+          client_id: requestBody.client_id,
+          client_secret_length: requestBody.client_secret.length,
+          client_secret_chars_1_to_10: requestBody.client_secret.substring(0, 10),
+          client_secret_chars_last_6: requestBody.client_secret.substring(requestBody.client_secret.length - 6),
+          code: requestBody.code,
+          redirect_uri: requestBody.redirect_uri,
+        },
       });
     }
 
     const token = data.access_token;
     const deepLink = `axev3d://callback?token=${token}`;
-
-    // Página HTML que faz o redirect para o deep link da app Android.
-    // Um HTTP 302 não funciona com custom schemes — o browser precisa de JS para isso.
     res.setHeader('Content-Type', 'text/html');
     return res.status(200).send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>AXEV 3D Studio — Autenticando...</title>
+  <title>AXEV 3D Studio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: sans-serif; background: #0d1117; color: #c9d1d9;
@@ -89,6 +101,11 @@ export default async function handler(req, res) {
 </html>`);
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      ...diag,
+      step: 'exception',
+      error: err.message,
+      stack: err.stack,
+    });
   }
 }
