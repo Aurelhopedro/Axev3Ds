@@ -522,9 +522,9 @@ jobs:
           set -euo pipefail
           mkdir -p out
 
-          # Criar script TypeScript temporário para combinar preset + overrides
-          # Usa tsx (já instalado como devDependency do motor) — lê .ts directamente
-          cat > /tmp/merge-params.ts << 'TSEOF'
+          # FIX: escrever o script DENTRO de ara-3d-gen para que os imports
+          # relativos (./src/core/params) sejam resolvidos correctamente pelo tsx
+          cat > merge-params.ts << 'TSEOF'
           import { readFileSync, writeFileSync } from 'node:fs';
           import { DEFAULT_PARAMS, PRESETS } from './src/core/params';
 
@@ -536,7 +536,7 @@ jobs:
           console.log(`✅ Preset "${presetName}" + ${Object.keys(overrides).length} overrides combinados.`);
           TSEOF
 
-          npx tsx /tmp/merge-params.ts
+          npx tsx merge-params.ts
 
           echo "A gerar com formatos: $FORMATS_NORM"
           npm run export -- \
