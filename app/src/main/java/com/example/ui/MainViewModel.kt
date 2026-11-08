@@ -11,6 +11,7 @@ import com.example.data.auth.AuthResult
 import com.example.data.auth.GitHubAuthRepository
 import com.example.data.models.CharacterConfig
 import com.example.data.repository.GenerationRepository
+import com.example.data.repository.GenerationRepository.DownloadStatus
 import com.example.data.repository.GenerationRepository.GenerationStatus
 import com.example.data.repository.GitHubRepository
 import com.example.data.repository.RepoCreationResult
@@ -120,6 +121,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Magic Box — estado de geração exposto ao ViewerScreen ─────────────────
     private val _generationStatus = MutableStateFlow<GenerationStatus?>(null)
     val generationStatus: StateFlow<GenerationStatus?> = _generationStatus.asStateFlow()
+
+    // ── Estado de download por artifactId — Map para suportar múltiplos ficheiros
+    private val _downloadStates = MutableStateFlow<Map<Long, DownloadStatus>>(emptyMap())
+    val downloadStates: StateFlow<Map<Long, DownloadStatus>> = _downloadStates.asStateFlow()
 
     private var lastDispatchedAt: Long = 0L
 
@@ -267,7 +272,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _workspaceSetupState.value = WorkspaceSetupState.Idle
     }
 
-    // ── Criar Ambiente de Trabalho — envia workflows para o repositório ───────
+    // ── Criar Ambiente de Trabalho ────────────────────────────────────────────
 
     fun setupWorkspace(ownerLogin: String, repoName: String) {
         viewModelScope.launch {
@@ -314,6 +319,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _smokeTestState.value    = SmokeTestState.Idle
             _workspaceSetupState.value = WorkspaceSetupState.Idle
             _generationStatus.value  = null
+            _downloadStates.value    = emptyMap()
         }
     }
 
@@ -345,6 +351,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         generationJob?.cancel()
         _generationStatus.value = GenerationStatus.Preparing()
+        _downloadStates.value = emptyMap() // limpar downloads anteriores
 
         generationJob = viewModelScope.launch {
             _uiState.value = UiState.Loading
@@ -381,6 +388,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         generationJob?.cancel()
         _generationStatus.value = null
         _uiState.value = UiState.Idle
+        _downloadStates.value = emptyMap()
+    }
+
+    // ── Download de artifact ──────────────────────────────────────────────────
+
+    /**
+     * Descarrega um artifact diretamente para a pasta Downloads do dispositivo.
+     * O estado é rastreado por artifactId para suportar múltiplos downloads em paralelo.
+     */
+    fun downloadFile(file: GeneratedFile) {
+        val repo = selectedRepo.value ?: return
+
+        // Modo demo — simular download
+        if (token.value == "123456789") {
+            viewModelScope.launch {
+                _downloadStates.value = _downloadStates.value + (file.artifactId to DownloadStatus.Downloading)
+                delay(2000)
+                _downloadStates.value = _downloadStates.value + (file.artifactId to DownloadStatus.Done(file.name))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _downloadStates.value = _downloadStates.value + (file.artifactId to DownloadStatus.Downloading)
+
+            val result = generationRepo.downloadArtifact(file, repo)
+
+            _downloadStates.value = _downloadStates.value + (file.artifactId to result)
+        }
     }
 
     // ── Demo mode ─────────────────────────────────────────────────────────────
