@@ -78,7 +78,7 @@ class GitHubAuthRepository(context: Context) {
             return AuthResult.Error("GITHUB_CLIENT_ID is not configured.")
         }
         val redirectUri = "https://provedoraxev3ds.vercel.app/api/auth/callback"
-        val scope = "public_repo read:user"
+        val scope = "public_repo read:user workflow"
         val url = "https://github.com/login/oauth/authorize" +
                 "?client_id=${clientId}" +
                 "&redirect_uri=${android.net.Uri.encode(redirectUri)}" +
@@ -101,7 +101,7 @@ class GitHubAuthRepository(context: Context) {
         return try {
             val response = githubOAuthApi.requestDeviceCode(
                 clientId = clientId,
-                scope = "public_repo read:user"
+                scope = "public_repo read:user workflow"
             )
             val body = response.body()
             if (response.isSuccessful && body != null) {
