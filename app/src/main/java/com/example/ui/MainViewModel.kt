@@ -76,16 +76,10 @@ sealed class WorkspaceSetupState {
     data class Failed(val message: String) : WorkspaceSetupState()
 }
 
-/**
- * Estado de actualização automática dos workflows num repositório já existente.
- * Visível no UI para feedback ao utilizador (spinner silencioso → sucesso/erro).
- */
 sealed class WorkflowUpdateState {
     object Idle : WorkflowUpdateState()
     object Updating : WorkflowUpdateState()
-    /** Ambos actualizados com sucesso. */
     object Done : WorkflowUpdateState()
-    /** Falha parcial: [details] lista o estado de cada workflow. */
     data class Failed(val details: List<String>) : WorkflowUpdateState()
 }
 
@@ -180,8 +174,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun handleOAuthCallback(token: String) {
         when (val result = authRepository.handleWebCallback(token)) {
             is AuthResult.Success -> {
-                _authState.value = AuthState.Authenticated
+                // FIX: also save the token in GitHubRepository's tokenManager
+                // so that resolveToken() finds it immediately without waiting
+                // for the StateFlow to propagate.
                 viewModelScope.launch {
+                    repository.saveToken(result.accessToken)
+                    _authState.value = AuthState.Authenticated
                     refreshUserData()
                     loadWorkflowOptions()
                 }
@@ -229,7 +227,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Dados do utilizador ───────────────────────────────────────────────────
 
     private suspend fun refreshUserData() {
-        val bearer = repository.tokenManager.getBearerToken()
+        // FIX: use resolveToken() so Web-Flow auth is picked up immediately
+        val bearer = repository.resolveToken()
+            ?: authRepository.tokenManager.getBearerToken()
         if (bearer != null) {
             _user.value  = repository.getUser(bearer)
             _repos.value = repository.getRepos(bearer)
@@ -271,7 +271,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (val result = repository.createRepository(name, description, private)) {
                 is RepoCreationResult.Success -> {
                     _repoCreationState.value = RepoCreationState.Success(result.repo)
-                    val bearer = repository.tokenManager.getBearerToken()
+                    val bearer = repository.resolveToken()
                     if (bearer != null) _repos.value = repository.getRepos(bearer)
                     loadWorkflowOptions()
                 }
@@ -309,17 +309,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Actualizar workflows num repositório existente ────────────────────────
+    // ── Actualizar workflows ──────────────────────────────────────────────────
 
-    /**
-     * Actualiza os dois workflows no repositório seleccionado.
-     *
-     * Faz GET do SHA de cada ficheiro e PUT com o novo conteúdo.
-     * Chamado automaticamente ao seleccionar um repositório existente,
-     * e disponível para chamada manual pelo UI (ex.: botão "Sync Workflows").
-     *
-     * Não bloqueia a UI — o estado é exposto via [workflowUpdateState].
-     */
     fun updateWorkflows(repoFullName: String? = null) {
         val repo = repoFullName ?: selectedRepo.value ?: return
 
@@ -354,14 +345,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _workflowUpdateState.value = WorkflowUpdateState.Idle
     }
 
-    // ── Acções existentes ─────────────────────────────────────────────────────
+    // ── Selecção de repositório ───────────────────────────────────────────────
 
-    /**
-     * Selecciona um repositório e automaticamente:
-     * 1. Guarda a selecção
-     * 2. Carrega as opções dinâmicas dos dropdowns
-     * 3. Actualiza os workflows (upsert silencioso)
-     */
     fun selectRepo(repoFullName: String) {
         viewModelScope.launch {
             repository.saveRepo(repoFullName)
@@ -370,7 +355,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 fetchWorkflowRuns()
                 return@launch
             }
-            // Actualizar workflows silenciosamente em background
             Log.i(TAG, "selectRepo: auto-updating workflows for $repoFullName")
             updateWorkflows(repoFullName)
         }
@@ -398,7 +382,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun fetchWorkflowRuns(t: String? = token.value, r: String? = selectedRepo.value) {
-        if (t == null || r == null) return
+        if (r == null) return
         viewModelScope.launch {
             if (t == "123456789") {
                 _workflowRuns.value = listOf(
@@ -409,7 +393,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
-            _workflowRuns.value = repository.getWorkflowRuns(t, r)
+            // FIX: use a non-null token from resolveToken()
+            val bearer = repository.resolveToken() ?: return@launch
+            _workflowRuns.value = repository.getWorkflowRuns(bearer, r)
         }
     }
 
@@ -417,11 +403,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentCharacter.value = config
     }
 
-    // ── Geração de personagem — Magic Box ─────────────────────────────────────
+    // ── Geração de personagem ─────────────────────────────────────────────────
 
     fun generate() {
-        val t = token.value ?: return
-        val r = selectedRepo.value ?: return
+        val r = selectedRepo.value ?: run {
+            Log.e(TAG, "generate: no repository selected")
+            _generationStatus.value = GenerationStatus.Failed("No repository selected. Please select one first.")
+            return
+        }
+
+        // FIX: use resolveToken() instead of the StateFlow value.
+        // The StateFlow is initialized once at ViewModel creation from the
+        // tokenManager and never re-emits, so a token saved after init
+        // (e.g. Web Flow callback) would be invisible to it.
+        val t = repository.resolveToken() ?: run {
+            Log.e(TAG, "generate: no token available")
+            _generationStatus.value = GenerationStatus.Failed("Not authenticated. Please log in again.")
+            return
+        }
 
         generationJob?.cancel()
         _generationStatus.value = GenerationStatus.Preparing()
@@ -430,16 +429,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         generationJob = viewModelScope.launch {
             _uiState.value = UiState.Loading
 
-            if (t == "123456789") {
+            if (token.value == "123456789") {
                 simulateDemoGeneration()
                 return@launch
             }
 
             val config  = _currentCharacter.value
+            Log.i(TAG, "generate: starting for character_id=${config.id} in $r")
+
             val success = repository.generateCharacter(t, r, config)
             if (!success) {
                 _generationStatus.value = GenerationStatus.Failed(
-                    "Something went wrong while starting. Please try again."
+                    "Failed to start generation. Check your GitHub token permissions (needs 'workflow' scope)."
                 )
                 _uiState.value = UiState.Error("Failed to start generation")
                 return@launch
@@ -529,7 +530,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _smokeTestState.value = if (success) {
                 SmokeTestState.Started("Smoke test dispatched — 6 cases running on GitHub Actions")
             } else {
-                SmokeTestState.Failed("Failed to dispatch smoke test")
+                SmokeTestState.Failed("Failed to dispatch smoke test. Check token permissions.")
             }
             fetchWorkflowRuns()
         }
