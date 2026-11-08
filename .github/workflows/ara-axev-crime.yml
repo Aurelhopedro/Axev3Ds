@@ -1,99 +1,588 @@
-name: AXEV CRIME — Gerar protagonista 3D
+name: AXEV 3D — Gerar Personagem
 
 on:
   workflow_dispatch:
     inputs:
+      character_id:
+        description: "ID único do personagem (UUID gerado pela app)"
+        required: true
+        type: string
+        default: "character_001"
+      character_name:
+        description: "Nome do personagem"
+        required: true
+        type: string
+        default: "AXEV Character"
       preset:
-        description: "Escolha um preset que existe no Ara 3D Gen"
+        description: "Categoria / preset do personagem (ex: Soldier, Police Officer...)"
         required: true
-        type: choice
-        options:
-          - The Soldier
-          - The African Warrior
-          - The American Warrior
-          - The Police Officer
-          - The American Sheriff
-          - Detective
-        default: The Soldier
-      detail:
-        description: "Nível de detalhe"
+        type: string
+        default: "Soldier"
+      quality:
+        description: "Nível de qualidade: low | medium | high"
         required: true
-        type: choice
-        options:
-          - medium
-          - high
-        default: high
+        type: string
+        default: "High"
+      export_formats:
+        description: "Formatos a exportar, separados por vírgula (ex: glb ou glb,fbx,obj,zip)"
+        required: true
+        type: string
+        default: "glb"
+      config_json:
+        description: "JSON completo do CharacterConfig enviado pela app Android"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: axev-character-${{ github.ref }}
+  group: axev-character-${{ github.ref }}-${{ inputs.character_id }}
   cancel-in-progress: false
 
 jobs:
   generate-character:
-    name: Gerar personagem e disponibilizar ficheiros
+    name: "Gerar personagem e disponibilizar ficheiros"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+
     steps:
-      - name: Obter o repositório AXEV CRIME
+      # ─── 1. VALIDAÇÃO DOS INPUTS ────────────────────────────────────────────
+      - name: Validar inputs recebidos da app
+        env:
+          INPUT_FORMATS: ${{ inputs.export_formats }}
+          INPUT_QUALITY: ${{ inputs.quality }}
+          INPUT_PRESET:  ${{ inputs.preset }}
+          INPUT_ID:      ${{ inputs.character_id }}
+          INPUT_NAME:    ${{ inputs.character_name }}
+          INPUT_JSON:    ${{ inputs.config_json }}
+        run: |
+          set -euo pipefail
+
+          # --- Validar character_id (apenas caracteres seguros) ---
+          if ! echo "$INPUT_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
+            echo "::error::character_id inválido: '$INPUT_ID'. Use apenas letras, números, _ ou -."
+            exit 1
+          fi
+
+          # --- Validar quality ---
+          QUALITY_LOWER=$(echo "$INPUT_QUALITY" | tr '[:upper:]' '[:lower:]')
+          if [[ "$QUALITY_LOWER" != "low" && "$QUALITY_LOWER" != "medium" && "$QUALITY_LOWER" != "high" ]]; then
+            echo "::error::quality inválida: '$INPUT_QUALITY'. Valores aceites: low, medium, high."
+            exit 1
+          fi
+          echo "QUALITY_NORM=$QUALITY_LOWER" >> "$GITHUB_ENV"
+
+          # --- Validar formatos ---
+          ALLOWED="glb fbx obj zip"
+          IFS=',' read -ra FMTS <<< "$INPUT_FORMATS"
+          for fmt in "${FMTS[@]}"; do
+            fmt_clean=$(echo "$fmt" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            if ! echo "$ALLOWED" | grep -qw "$fmt_clean"; then
+              echo "::error::Formato não suportado: '$fmt_clean'. Valores aceites: glb, fbx, obj, zip."
+              exit 1
+            fi
+          done
+          FORMATS_NORM=$(echo "$INPUT_FORMATS" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+          echo "FORMATS_NORM=$FORMATS_NORM" >> "$GITHUB_ENV"
+
+          # --- Validar config_json (se fornecido) ---
+          if [ -n "$INPUT_JSON" ]; then
+            if ! echo "$INPUT_JSON" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+              echo "::error::config_json contém JSON malformado."
+              exit 1
+            fi
+          fi
+
+          echo "✅ Todos os inputs validados."
+          echo "   character_id  : $INPUT_ID"
+          echo "   character_name: $INPUT_NAME"
+          echo "   preset        : $INPUT_PRESET"
+          echo "   quality       : $QUALITY_LOWER"
+          echo "   export_formats: $FORMATS_NORM"
+
+      # ─── 2. CHECKOUT DO REPOSITÓRIO AXEV ────────────────────────────────────
+      - name: Checkout do repositório AXEV
         uses: actions/checkout@v4
 
-      - name: Preparar Node.js
+      # ─── 3. NODE.JS ─────────────────────────────────────────────────────────
+      - name: Configurar Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Obter Ara 3D Gen
-        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+      # ─── 4. CLONAR ARA 3D GEN ───────────────────────────────────────────────
+      - name: Obter motor Ara 3D Gen
+        run: |
+          git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+          echo "Motor clonado. Versão do package.json:"
+          node -e "const p=require('./ara-3d-gen/package.json'); console.log(p.name,'v'+p.version)"
 
-      - name: Instalar dependências
+      # ─── 5. INSTALAR DEPENDÊNCIAS ────────────────────────────────────────────
+      - name: Instalar dependências (npm ci)
         working-directory: ara-3d-gen
-        run: npm install
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "package-lock.json encontrado — a usar npm ci"
+            npm ci
+          else
+            echo "Sem package-lock.json — a usar npm install"
+            npm install
+          fi
 
-      - name: Preparar recursos 3D
+      # ─── 6. CACHE DOS ASSETS (vendor/) ──────────────────────────────────────
+      - name: Cache dos assets MakeHuman
+        id: cache-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ara-3d-gen/vendor
+            ara-3d-gen/public/assets
+          key: ara3d-assets-v1-${{ hashFiles('ara-3d-gen/scripts/setup-assets.ts', 'ara-3d-gen/scripts/mocap-takes.ts') }}
+          restore-keys: |
+            ara3d-assets-v1-
+
+      - name: Preparar recursos 3D (setup-assets)
         working-directory: ara-3d-gen
-        run: npm run setup-assets
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        run: |
+          echo "A descarregar assets MakeHuman (~280 MB). Pode demorar vários minutos..."
+          npm run setup-assets
 
-      - name: Gerar personagem
+      - name: Verificar assets após cache
+        working-directory: ara-3d-gen
+        if: steps.cache-assets.outputs.cache-hit == 'true'
+        run: |
+          echo "Assets restaurados da cache."
+          if [ ! -d "vendor/sys/skins" ]; then
+            echo "Cache incompleta — a regenerar assets..."
+            npm run setup-assets
+          else
+            echo "✅ Assets verificados: vendor/sys/skins presente."
+          fi
+
+      # ─── 7. CONSTRUIR CONFIGURAÇÃO DO PERSONAGEM ─────────────────────────────
+      - name: Construir parâmetros do personagem
+        env:
+          INPUT_PRESET:   ${{ inputs.preset }}
+          INPUT_NAME:     ${{ inputs.character_name }}
+          INPUT_ID:       ${{ inputs.character_id }}
+          INPUT_JSON:     ${{ inputs.config_json }}
+        run: |
+          set -euo pipefail
+          mkdir -p axev-build
+
+          # Mapeamento da categoria da app para o nome exacto do preset no motor.
+          # A app envia identity.category (ex: "Soldier"), o motor precisa do nome completo.
+          map_preset() {
+            local cat="$1"
+            case "$(echo "$cat" | tr '[:upper:]' '[:lower:]')" in
+              "soldier"|"the soldier")               echo "The Soldier" ;;
+              "african warrior"|"the african warrior") echo "The African Warrior" ;;
+              "american warrior")                     echo "The Soldier" ;;
+              "police officer"|"the police officer")  echo "The Police Officer (Nigeria)" ;;
+              "american sheriff"|"the american sheriff") echo "The American Sheriff" ;;
+              "detective")                            echo "Detective" ;;
+              "gangster"|"the gangster")              echo "The Gangster" ;;
+              "spy"|"secret agent"|"the secret agent") echo "The Secret Agent" ;;
+              "bodyguard"|"the bodyguard")            echo "The Bodyguard" ;;
+              "priest"|"the priest")                  echo "The Priest" ;;
+              "hitman"|"the professional hitman")     echo "The Professional Hitman" ;;
+              "adventurer"|"the adventurer")          echo "The Adventurer" ;;
+              "cyberpunk"|"cyberpunk hacker")         echo "The Cyberpunk Hacker" ;;
+              "wasteland"|"wasteland survivor")       echo "The Wasteland Survivor" ;;
+              "elder")                                echo "Elder" ;;
+              "teen")                                 echo "Teen" ;;
+              "heavy brute")                          echo "Heavy brute" ;;
+              "businesswoman")                        echo "Businesswoman" ;;
+              "athletic woman")                       echo "Athletic woman" ;;
+              "athletic man"|"athletic"|"")           echo "Athletic man" ;;
+              *)
+                # Tentativa directa: o utilizador pode ter passado o nome completo
+                echo "$cat"
+                ;;
+            esac
+          }
+
+          RESOLVED_PRESET=$(map_preset "$INPUT_PRESET")
+          echo "RESOLVED_PRESET=$RESOLVED_PRESET" >> "$GITHUB_ENV"
+          echo "Preset da app: '$INPUT_PRESET' → Motor: '$RESOLVED_PRESET'"
+
+          # Se foi fornecido config_json, extrair parâmetros úteis e criar params.json
+          # que combina o preset base com as personalizações da app.
+          if [ -n "$INPUT_JSON" ]; then
+            python3 << 'PYEOF'
+          import json, os, sys
+
+          config_json = os.environ.get("INPUT_JSON", "")
+          preset_name = os.environ.get("RESOLVED_PRESET", "Athletic man")
+          char_name   = os.environ.get("INPUT_NAME", "AXEV Character")
+
+          try:
+              app_config = json.loads(config_json)
+          except json.JSONDecodeError as e:
+              print(f"[WARNING] config_json inválido: {e}. A usar apenas o preset.", flush=True)
+              app_config = {}
+
+          # Tabela de conversão: campos da app → campos HumanParams do motor
+          appearance = app_config.get("appearance", {})
+          identity   = app_config.get("identity", {})
+          export_cfg = app_config.get("export", {})
+
+          # Construir overrides a partir da app
+          overrides = {}
+
+          # Género
+          gender_str = identity.get("gender", "Male")
+          if gender_str == "Female":
+              overrides["gender"] = 0.0
+          elif gender_str == "Male":
+              overrides["gender"] = 1.0
+
+          # Idade (a app usa string "25", motor usa 0..1)
+          try:
+              age_years = int(identity.get("age", "25"))
+              age_years = max(12, min(90, age_years))
+              if age_years < 25:
+                  age_norm = 0.1875 + ((age_years - 11) / 14) * 0.3125 if age_years >= 11 else (age_years / 11) * 0.1875
+              else:
+                  age_norm = 0.5 + ((age_years - 25) / 65) * 0.5
+              overrides["age"] = round(age_norm, 4)
+          except (ValueError, TypeError):
+              pass
+
+          # Corpo
+          body_map = {
+              "Normal": {"muscle": 0.6, "weight": 0.5},
+              "Athletic": {"muscle": 0.75, "weight": 0.45},
+              "Heavy": {"muscle": 0.6, "weight": 0.75},
+              "Slim": {"muscle": 0.4, "weight": 0.3},
+          }
+          body = body_map.get(appearance.get("bodyType", "Normal"), {})
+          overrides.update(body)
+
+          # Altura
+          try:
+              h = float(appearance.get("height", 1.0))
+              overrides["height"] = round(max(0.0, min(1.0, (h - 0.5) / 1.0)), 3)
+          except (ValueError, TypeError):
+              pass
+
+          # Cor de pele → africano/asiático/caucasiano (aproximação)
+          skin_map = {
+              "Light": {"african": 0.0, "asian": 0.1, "caucasian": 0.9},
+              "Medium": {"african": 0.3, "asian": 0.2, "caucasian": 0.5},
+              "Dark": {"african": 0.8, "asian": 0.1, "caucasian": 0.1},
+              "Very Dark": {"african": 1.0, "asian": 0.0, "caucasian": 0.0},
+          }
+          skin_vals = skin_map.get(appearance.get("skinTone", "Medium"), {})
+          overrides.update(skin_vals)
+
+          # Cabelo
+          hair_map = {
+              "Short": "short02", "Buzz": "buzz", "Long": "long01",
+              "Afro": "afro01", "Cornrows": "cornrows", "None": "none",
+              "Ponytail": "ponytail01", "Bob": "bob02",
+          }
+          hair_id = hair_map.get(appearance.get("hairStyle", "Short"))
+          if hair_id:
+              overrides["hair"] = hair_id
+
+          # Cor do cabelo
+          hair_col_map = {
+              "Black": "#15100c", "Brown": "#3b2a1d", "Blonde": "#c8a86b",
+              "Red": "#7a2e14", "White": "#c8c0b4", "Grey": "#6a6060",
+          }
+          hc = hair_col_map.get(appearance.get("hairColor", "Black"))
+          if hc:
+              overrides["hairColor"] = hc
+
+          # Barba
+          beard_map = {
+              "None": "none", "Stubble": "stubble", "Full": "full_beard",
+              "Short": "short_beard", "Goatee": "goatee", "Mustache": "mustache",
+          }
+          bd = beard_map.get(appearance.get("beardStyle", "None"))
+          if bd:
+              overrides["facialHair"] = bd
+
+          # Animações
+          overrides["animations"] = export_cfg.get("includeAnimations", True)
+          rig_enabled = export_cfg.get("includeRig", True)
+          overrides["rig"] = "game" if rig_enabled else "none"
+
+          # Nome do personagem
+          overrides["name"] = char_name if char_name else preset_name
+
+          # Guardar params de overrides e config original
+          with open("axev-build/app_overrides.json", "w") as f:
+              json.dump(overrides, f, indent=2)
+
+          with open("axev-build/app_config_original.json", "w") as f:
+              json.dump(app_config, f, indent=2)
+
+          print(f"✅ Overrides calculados: {list(overrides.keys())}")
+          print(json.dumps(overrides, indent=2))
+          PYEOF
+          else
+            # Sem config_json — apenas o preset
+            echo '{}' > axev-build/app_overrides.json
+            echo '{}' > axev-build/app_config_original.json
+            echo "Sem config_json — será usado apenas o preset '$RESOLVED_PRESET'."
+          fi
+
+      # ─── 8. GERAR O PERSONAGEM ───────────────────────────────────────────────
+      - name: Gerar personagem com Ara 3D Gen
         working-directory: ara-3d-gen
         env:
-          CHARACTER_PRESET: ${{ inputs.preset }}
-          CHARACTER_DETAIL: ${{ inputs.detail }}
+          RESOLVED_PRESET: ${{ env.RESOLVED_PRESET }}
+          QUALITY_NORM:    ${{ env.QUALITY_NORM }}
+          FORMATS_NORM:    ${{ env.FORMATS_NORM }}
+          CHAR_NAME:       ${{ inputs.character_name }}
         run: |
+          set -euo pipefail
           mkdir -p out
-          npm run export -- --preset "$CHARACTER_PRESET" --detail "$CHARACTER_DETAIL" --out out
 
-      - name: Verificar exportação
-        run: |
-          test -d ara-3d-gen/out
-          test -n "$(find ara-3d-gen/out -type f -print -quit)"
-          echo "Ficheiros exportados:"
-          find ara-3d-gen/out -type f -printf '%p (%s bytes)\n'
+          # Verificar se o preset existe
+          node -e "
+            import('../src/core/params.js').then(m => {
+              const presets = Object.keys(m.PRESETS);
+              const name = process.env.RESOLVED_PRESET;
+              if (!presets.includes(name) && name !== 'Athletic man') {
+                console.error('Preset não encontrado: ' + name);
+                console.error('Presets disponíveis: ' + presets.join(', '));
+                process.exit(1);
+              }
+              console.log('Preset confirmado: ' + name);
+            }).catch(e => { console.error(e.message); process.exit(1); });
+          " || {
+            echo "::warning::Não foi possível verificar o preset via Node — a continuar com '$RESOLVED_PRESET'."
+          }
 
-      - name: Criar nota de geração
-        working-directory: ara-3d-gen
+          # Verificar se há overrides da app
+          OVERRIDES=$(cat ../axev-build/app_overrides.json)
+          HAS_OVERRIDES=false
+          if [ "$OVERRIDES" != "{}" ] && [ -n "$OVERRIDES" ]; then
+            HAS_OVERRIDES=true
+          fi
+
+          if [ "$HAS_OVERRIDES" = "true" ]; then
+            # Combinar preset + overrides num ficheiro params.json
+            # O motor suporta --params que substitui DEFAULT_PARAMS (não o preset directamente).
+            # Estratégia: preset fornecido como --preset, overrides como variáveis de ambiente
+            # não são possíveis no CLI — usamos --params com o preset como base + overrides.
+            node -e "
+              import('../src/core/params.js').then(m => {
+                const preset = m.PRESETS[process.env.RESOLVED_PRESET] ?? {};
+                const defaults = m.DEFAULT_PARAMS;
+                const overrides = JSON.parse(require('fs').readFileSync('../axev-build/app_overrides.json','utf8'));
+                const final = { ...defaults, ...preset, ...overrides, name: process.env.CHAR_NAME || defaults.name };
+                require('fs').writeFileSync('../axev-build/character.params.json', JSON.stringify(final, null, 2));
+                console.log('Parâmetros finais gerados: ' + Object.keys(final).length + ' campos');
+              }).catch(e => { console.error(e.message); process.exit(1); });
+            "
+            echo "A executar com --params (preset + overrides da app)..."
+            npm run export -- \
+              --params "../axev-build/character.params.json" \
+              --detail "$QUALITY_NORM" \
+              --formats "$FORMATS_NORM" \
+              --out out
+          else
+            # Sem overrides — usar apenas o preset
+            echo "A executar com --preset '$RESOLVED_PRESET'..."
+            npm run export -- \
+              --preset "$RESOLVED_PRESET" \
+              --detail "$QUALITY_NORM" \
+              --formats "$FORMATS_NORM" \
+              --out out
+          fi
+
+          echo "✅ Geração concluída."
+
+      # ─── 9. VALIDAR RESULTADOS ──────────────────────────────────────────────
+      - name: Validar ficheiros exportados
         env:
-          CHARACTER_PRESET: ${{ inputs.preset }}
-          CHARACTER_DETAIL: ${{ inputs.detail }}
+          FORMATS_NORM: ${{ env.FORMATS_NORM }}
         run: |
-          cat > out/GERACAO_AXEV.txt <<EOF
-          AXEV CRIME — REGISTO DE GERAÇÃO
-          Preset solicitado: $CHARACTER_PRESET
-          Detalhe solicitado: $CHARACTER_DETAIL
+          set -euo pipefail
 
-          NOTA:
-          Este registo confirma apenas as opções usadas na geração.
-          Os nomes de animações, ossos, expressões e capacidades só serão
-          documentados depois de inspeccionarmos os dados reais do GLB exportado.
-          Não assumir que uma animação existe sem a encontrar no ficheiro.
-          EOF
+          OUT="ara-3d-gen/out"
 
-      - name: Disponibilizar ficheiros para descarregar
+          # Verificar que a pasta de saída existe e não está vazia
+          if [ ! -d "$OUT" ]; then
+            echo "::error::Pasta de saída '$OUT' não foi criada."
+            exit 1
+          fi
+          if [ -z "$(find "$OUT" -type f -print -quit)" ]; then
+            echo "::error::Pasta de saída '$OUT' está vazia — nenhum ficheiro exportado."
+            exit 1
+          fi
+
+          echo "Ficheiros produzidos:"
+          find "$OUT" -type f -printf '  %p (%s bytes)\n'
+
+          # Verificar formatos solicitados
+          IFS=',' read -ra FMTS <<< "$FORMATS_NORM"
+          ALL_OK=true
+          for fmt in "${FMTS[@]}"; do
+            fmt=$(echo "$fmt" | tr -d '[:space:]')
+            case "$fmt" in
+              glb)
+                FILES=$(find "$OUT" -name "*.glb" -type f)
+                if [ -z "$FILES" ]; then
+                  echo "::error::Formato GLB solicitado mas nenhum .glb encontrado em '$OUT'."
+                  ALL_OK=false
+                else
+                  for f in $FILES; do
+                    SIZE=$(stat -c%s "$f")
+                    if [ "$SIZE" -lt 1024 ]; then
+                      echo "::error::Ficheiro GLB suspeito (${SIZE} bytes): $f"
+                      ALL_OK=false
+                    else
+                      echo "✅ GLB: $f ($(( SIZE / 1024 )) KB)"
+                    fi
+                  done
+                fi
+                ;;
+              fbx)
+                FILES=$(find "$OUT" -name "*.fbx" -type f)
+                if [ -z "$FILES" ]; then
+                  echo "::error::Formato FBX solicitado mas nenhum .fbx encontrado."
+                  ALL_OK=false
+                else
+                  for f in $FILES; do
+                    SIZE=$(stat -c%s "$f")
+                    echo "✅ FBX: $f ($(( SIZE / 1024 )) KB)"
+                  done
+                fi
+                ;;
+              obj)
+                FILES=$(find "$OUT" -name "*.obj" -type f)
+                if [ -z "$FILES" ]; then
+                  echo "::error::Formato OBJ solicitado mas nenhum .obj encontrado."
+                  ALL_OK=false
+                else
+                  for f in $FILES; do
+                    echo "✅ OBJ: $f"
+                    # OBJ sem rigging ou animações (formato estático por natureza)
+                  done
+                fi
+                ;;
+              zip)
+                FILES=$(find "$OUT" -name "*.zip" -type f)
+                if [ -z "$FILES" ]; then
+                  echo "::error::Formato ZIP solicitado mas nenhum .zip encontrado."
+                  ALL_OK=false
+                else
+                  for f in $FILES; do
+                    SIZE=$(stat -c%s "$f")
+                    echo "✅ ZIP: $f ($(( SIZE / 1024 )) KB)"
+                    # Listar conteúdo do ZIP
+                    unzip -l "$f" | head -30 || true
+                  done
+                fi
+                ;;
+            esac
+          done
+
+          if [ "$ALL_OK" != "true" ]; then
+            echo "::error::Validação falhou — nem todos os formatos solicitados foram produzidos."
+            exit 1
+          fi
+          echo "✅ Todos os formatos validados com sucesso."
+
+      # ─── 10. RELATÓRIO TÉCNICO ──────────────────────────────────────────────
+      - name: Criar relatório técnico AXEV_CHARACTER_REPORT.md
+        env:
+          CHARACTER_ID:    ${{ inputs.character_id }}
+          CHARACTER_NAME:  ${{ inputs.character_name }}
+          PRESET_APP:      ${{ inputs.preset }}
+          FORMATS_NORM:    ${{ env.FORMATS_NORM }}
+          QUALITY_NORM:    ${{ env.QUALITY_NORM }}
+          RESOLVED_PRESET: ${{ env.RESOLVED_PRESET }}
+          RUN_ID:          ${{ github.run_id }}
+          RUN_NUMBER:      ${{ github.run_number }}
+          REPO:            ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p axev-output/exports
+
+          OUT="ara-3d-gen/out"
+
+          # Copiar ficheiros exportados
+          cp -r "$OUT"/. axev-output/exports/ 2>/dev/null || true
+
+          # Copiar parâmetros finais (se existirem)
+          if [ -f "axev-build/character.params.json" ]; then
+            cp axev-build/character.params.json axev-output/AXEV_CHARACTER_PARAMS.json
+          else
+            # Sem overrides — registar que foi usado só o preset
+            echo "{\"preset\": \"$RESOLVED_PRESET\", \"detail\": \"$QUALITY_NORM\", \"note\": \"Apenas preset utilizado, sem overrides da app.\"}" \
+              > axev-output/AXEV_CHARACTER_PARAMS.json
+          fi
+
+          # Listar ficheiros produzidos
+          FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
+
+          # Verificar formatos presentes
+          FORMATS_GERADOS=""
+          for fmt in glb fbx obj zip; do
+            if find axev-output/exports -name "*.${fmt}" -type f | grep -q .; then
+              FORMATS_GERADOS="$FORMATS_GERADOS $fmt"
+            fi
+          done
+          FORMATS_GERADOS=$(echo "$FORMATS_GERADOS" | tr ' ' ',' | sed 's/^,//')
+
+          # Data de execução
+          DATA_EXEC=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          cat > axev-output/AXEV_CHARACTER_REPORT.md << REPORTEOF
+          # AXEV 3D STUDIO — Relatório Técnico do Personagem
+
+          ## Identificação
+          - **character_id**: ${CHARACTER_ID}
+          - **character_name**: ${CHARACTER_NAME}
+          - **Execução GitHub Actions**: Run #${RUN_NUMBER} (ID: ${RUN_ID})
+          - **Repositório**: ${REPO}
+          - **Data**: ${DATA_EXEC}
+
+          ## Configuração Utilizada
+          - **Preset (app)**: ${PRESET_APP}
+          - **Preset (motor)**: ${RESOLVED_PRESET}
+          - **Qualidade solicitada**: ${QUALITY_NORM}
+          - **Formatos solicitados**: ${FORMATS_NORM}
+          - **Formatos efectivamente gerados**: ${FORMATS_GERADOS}
+
+          ## Notas de Compatibilidade
+          - O preset enviado pela app Android (\`identity.category\`) foi convertido para o nome
+            exacto reconhecido pelo motor Ara 3D Gen.
+          - OBJ não preserva rigging nem animações (limitação do formato).
+          - ZIP contém o conteúdo definido pelo motor (ver ficheiros abaixo).
+
+          ## Ficheiros Produzidos
+          ${FILES_LIST}
+
+          ## Informações Não Verificadas
+          - Número de ossos: não verificado automaticamente (requer ferramenta GLB externa).
+          - Lista de animações incluídas: não verificada automaticamente.
+          - Texturas e materiais: presentes conforme produzido pelo motor (não inspeccionados individualmente).
+
+          ## Parâmetros Aplicados
+          Ver ficheiro \`AXEV_CHARACTER_PARAMS.json\` neste artefacto.
+
+          ---
+          *Gerado automaticamente pelo workflow AXEV 3D — ara-axev-crime.yml*
+          REPORTEOF
+
+          echo "✅ Relatório criado."
+          cat axev-output/AXEV_CHARACTER_REPORT.md
+
+      # ─── 11. PUBLICAR ARTEFACTO ─────────────────────────────────────────────
+      - name: Publicar artefacto AXEV-CHARACTER
         uses: actions/upload-artifact@v4
         with:
-          name: axev-crime-personagem-${{ github.run_number }}
-          path: ara-3d-gen/out/**
+          name: AXEV-CHARACTER-${{ inputs.character_id }}
+          path: axev-output/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
