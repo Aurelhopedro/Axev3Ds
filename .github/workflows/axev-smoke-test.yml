@@ -1,11 +1,7 @@
 name: AXEV 3D — Smoke Test
 
-# Corre automaticamente sempre que o workflow principal é alterado
-# Também pode ser disparado manualmente
+# Disparado manualmente pela app ou pelo utilizador
 on:
-  push:
-    paths:
-      - '.github/workflows/ara-axev-crime.yml'
   workflow_dispatch:
 
 permissions:
@@ -22,14 +18,13 @@ jobs:
     name: "[${{ matrix.id }}] ${{ matrix.label }}"
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    continue-on-error: true  # cada caso corre independentemente
+    continue-on-error: true
 
     strategy:
-      fail-fast: false  # todos os casos correm mesmo que um falhe
+      fail-fast: false
       matrix:
         include:
 
-          # CASO 1 — Guerreiro africano masculino, GLB, animações, A-pose
           - id: "TC01"
             label: "Guerreiro Africano — GLB + animações"
             character_id: "smoke_tc01"
@@ -49,7 +44,6 @@ jobs:
             quality: "high"
             export_formats: "glb"
 
-          # CASO 2 — Executiva feminina asiática, FBX, sem animações, T-pose
           - id: "TC02"
             label: "Executiva Asiática — FBX sem animações"
             character_id: "smoke_tc02"
@@ -69,8 +63,6 @@ jobs:
             quality: "medium"
             export_formats: "fbx"
 
-          # CASO 3 — Personagem andrógino, GLB, sem roupa, sem rig
-          # OBJ removido: motor ara-3d-gen não suporta exportação OBJ
           - id: "TC03"
             label: "Andrógino sem roupa — GLB"
             character_id: "smoke_tc03"
@@ -90,7 +82,6 @@ jobs:
             quality: "low"
             export_formats: "glb"
 
-          # CASO 4 — Elder caucasiano, ZIP com todos os formatos
           - id: "TC04"
             label: "Elder Caucasiano — ZIP todos formatos"
             character_id: "smoke_tc04"
@@ -110,7 +101,6 @@ jobs:
             quality: "high"
             export_formats: "zip"
 
-          # CASO 5 — Agente secreto com arma + roupa separada (top+bottom), GLB+FBX
           - id: "TC05"
             label: "Agente Secreto com arma — GLB+FBX"
             character_id: "smoke_tc05"
@@ -130,7 +120,6 @@ jobs:
             quality: "high"
             export_formats: "glb,fbx"
 
-          # CASO 6 — Jovem feminina, cabelo longo, game_lite, GLB
           - id: "TC06"
             label: "Jovem Feminina — game_lite GLB"
             character_id: "smoke_tc06"
@@ -151,7 +140,6 @@ jobs:
             export_formats: "glb"
 
     steps:
-      # ─── VALIDAR INPUTS ───────────────────────────────────────────────────
       - name: Validar inputs do caso ${{ matrix.id }}
         env:
           INPUT_FORMATS: ${{ matrix.export_formats }}
@@ -175,27 +163,22 @@ jobs:
           echo "FORMATS_NORM=$FORMATS_NORM" >> "$GITHUB_ENV"
           echo "✅ [${{ matrix.id }}] Inputs validados."
 
-      # ─── CHECKOUT ─────────────────────────────────────────────────────────
       - name: Checkout AXEV
         uses: actions/checkout@v4
 
-      # ─── NODE.JS ──────────────────────────────────────────────────────────
       - name: Configurar Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # ─── CLONAR MOTOR ─────────────────────────────────────────────────────
       - name: Clonar Ara 3D Gen
         run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
 
-      # ─── DEPENDÊNCIAS ─────────────────────────────────────────────────────
       - name: Instalar dependências
         working-directory: ara-3d-gen
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      # ─── CACHE ASSETS ─────────────────────────────────────────────────────
       - name: Cache assets MakeHuman
         id: cache-assets
         uses: actions/cache@v4
@@ -216,7 +199,6 @@ jobs:
             echo "✅ Assets em cache."
           fi
 
-      # ─── CONSTRUIR PARÂMETROS ─────────────────────────────────────────────
       - name: Construir parâmetros [${{ matrix.id }}]
         env:
           INPUT_PRESET:      ${{ matrix.preset }}
@@ -326,7 +308,6 @@ jobs:
           print(json.dumps(params, indent=2))
           PYEOF
 
-      # ─── GERAR PERSONAGEM ─────────────────────────────────────────────────
       - name: Gerar personagem [${{ matrix.id }}]
         working-directory: ara-3d-gen
         env:
@@ -359,7 +340,6 @@ jobs:
           echo "✅ Geração concluída."
           find out -type f -printf '  %p (%s bytes)\n'
 
-      # ─── VALIDAR SAÍDA ────────────────────────────────────────────────────
       - name: Validar ficheiros exportados [${{ matrix.id }}]
         env:
           FORMATS_NORM: ${{ env.FORMATS_NORM }}
@@ -385,7 +365,6 @@ jobs:
           done
           echo "✅ [${{ matrix.id }}] Todos os formatos validados."
 
-      # ─── ARTEFACTO DO CASO ────────────────────────────────────────────────
       - name: Publicar artefacto [${{ matrix.id }}]
         if: always()
         uses: actions/upload-artifact@v4
@@ -397,9 +376,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # RELATÓRIO FINAL — corre depois de todos os casos e mostra resumo
-  # ══════════════════════════════════════════════════════════════════════════
   report:
     name: "Relatório do Smoke Test"
     runs-on: ubuntu-latest
@@ -411,14 +387,13 @@ jobs:
         run: |
           echo "## 🧪 AXEV Smoke Test — Resumo" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Caso | Descrição | Resultado |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-----------|-----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| TC01 | Guerreiro Africano — GLB + animações | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
-          echo "| TC02 | Executiva Asiática — FBX sem animações | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
-          echo "| TC03 | Andrógino sem roupa — GLB (OBJ não suportado pelo motor) | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
-          echo "| TC04 | Elder Caucasiano — ZIP todos formatos | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
-          echo "| TC05 | Agente Secreto com arma — GLB+FBX | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
-          echo "| TC06 | Jovem Feminina — game_lite GLB | Ver jobs acima |" >> $GITHUB_STEP_SUMMARY
+          echo "| Caso | Descrição |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TC01 | Guerreiro Africano — GLB + animações |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC02 | Executiva Asiática — FBX sem animações |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC03 | Andrógino sem roupa — GLB |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC04 | Elder Caucasiano — ZIP todos formatos |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC05 | Agente Secreto com arma — GLB+FBX |" >> $GITHUB_STEP_SUMMARY
+          echo "| TC06 | Jovem Feminina — game_lite GLB |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> Se todos os 6 casos passarem, qualquer combinação de personagem funcionará." >> $GITHUB_STEP_SUMMARY
-          echo "🧪 Smoke test concluído."
+          echo "> Se todos os 6 casos passarem, qualquer combinação funcionará." >> $GITHUB_STEP_SUMMARY
