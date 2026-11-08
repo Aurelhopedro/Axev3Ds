@@ -83,20 +83,41 @@ fun MainApp(viewModel: MainViewModel = viewModel()) {
                 LoginScreen(viewModel)
             }
             composable("repo_selection") {
-                RepoSelectionScreen(viewModel) {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo("repo_selection") { inclusive = true }
+                RepoSelectionScreen(
+                    viewModel = viewModel,
+                    onRepoSelected = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo("repo_selection") { inclusive = true }
+                        }
+                    },
+                    onCreateRepo = {
+                        navController.navigate("create_repo")
                     }
-                }
+                )
+            }
+            composable("create_repo") {
+                CreateRepoScreen(
+                    viewModel = viewModel,
+                    onSuccess = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
             }
             composable(Screen.Dashboard.route) {
-                DashboardScreen(viewModel)
+                DashboardScreen(
+                    viewModel = viewModel,
+                    onCreateRepo = {
+                        navController.navigate("create_repo")
+                    }
+                )
             }
             composable(Screen.Creator.route) {
                 CreatorScreen(viewModel)
             }
             composable(Screen.History.route) {
-                DashboardScreen(viewModel) // Reuse dashboard or separate
+                DashboardScreen(viewModel)
             }
             composable(Screen.Library.route) {
                 LibraryScreen()
@@ -110,15 +131,21 @@ fun MainApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    // React to auth state changes
+    // Reagir a mudanças de estado de autenticação
     LaunchedEffect(token) {
         if (token == null) {
             navController.navigate(Screen.Login.route) {
                 popUpTo(0)
             }
         } else if (navController.currentDestination?.route == Screen.Login.route) {
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(Screen.Login.route) { inclusive = true }
+            if (selectedRepo != null) {
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            } else {
+                navController.navigate("repo_selection") {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
             }
         }
     }
@@ -173,7 +200,7 @@ fun LibraryScreen() {
 fun SettingsScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
     Column(modifier = Modifier.padding(16.dp)) {
         SectionHeader(title = "STUDIO CONFIGURATION")
-        
+
         TacticalCard {
             Text("WORKFLOW STATUS", style = MaterialTheme.typography.labelSmall)
             Spacer(modifier = Modifier.height(8.dp))
