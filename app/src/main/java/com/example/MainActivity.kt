@@ -56,17 +56,6 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable(Screen.Login.route) {
                             LoginScreen(viewModel = viewModel)
-                            // Navigate when authenticated
-                            val state by viewModel.authState.collectAsState()
-                            if (state is AuthState.Authenticated) {
-                                val repo by viewModel.selectedRepo.collectAsState()
-                                navController.navigate(
-                                    if (repo == null) Screen.RepoSelection.route
-                                    else Screen.Dashboard.route
-                                ) {
-                                    popUpTo(Screen.Login.route) { inclusive = true }
-                                }
-                            }
                         }
 
                         composable(Screen.RepoSelection.route) {
@@ -97,11 +86,8 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Dashboard.route) {
                             DashboardScreen(
                                 viewModel = viewModel,
-                                onLogout = {
-                                    viewModel.logout()
-                                    navController.navigate(Screen.Login.route) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
+                                onNavigateToCreateRepo = {
+                                    navController.navigate(Screen.CreateRepo.route)
                                 }
                             )
                         }
