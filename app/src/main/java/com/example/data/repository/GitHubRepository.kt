@@ -88,13 +88,6 @@ class GitHubRepository(private val context: Context) {
         }
     }
 
-    /**
-     * Cria um repositório público e injicta os dois workflows AXEV.
-     * Delega toda a lógica de bootstrap para [RepositorySetupService].
-     *
-     * @return [SetupResult.Success] ou [SetupResult.AlreadyExisted] em caso de êxito;
-     *         [SetupResult.Error] com o passo e mensagem em caso de falha.
-     */
     suspend fun setupRepository(): SetupResult {
         val bearer = tokenManager.getBearerToken()
             ?: return SetupResult.Error("auth", "Não autenticado")
@@ -103,10 +96,6 @@ class GitHubRepository(private val context: Context) {
         return setupService.setupRepository(bearer, user.login)
     }
 
-    /**
-     * Cria apenas o repositório (sem injectar workflows).
-     * Mantido para compatibilidade com código existente.
-     */
     suspend fun createRepository(
         name: String,
         description: String,
@@ -139,6 +128,8 @@ class GitHubRepository(private val context: Context) {
         }
     }
 
+    // ── Geração de personagem — envia TODOS os inputs para o workflow ──────────
+
     suspend fun generateCharacter(
         token: String,
         repoFullName: String,
@@ -146,24 +137,35 @@ class GitHubRepository(private val context: Context) {
     ): Boolean {
         val parts = repoFullName.split("/")
         if (parts.size != 2) return false
-        val owner = parts[0]
-        val repo = parts[1]
+        val owner  = parts[0]
+        val repo   = parts[1]
         val bearer = token.asBearerToken()
 
         val inputs = mapOf(
-            "character_id"   to config.id,
-            "character_name" to config.name,
-            "preset"         to config.identity.category,
-            "quality"        to config.style.quality,
-            "export_formats" to config.export.formats.joinToString(","),
-            "config_json"    to moshi.adapter(CharacterConfig::class.java).toJson(config)
+            "character_id"    to config.id,
+            "character_name"  to config.name,
+            "preset"          to config.preset,
+            "gender_age"      to config.genderAge,
+            "body"            to config.body,
+            "skin_tone"       to config.skinTone,
+            "hair"            to config.hair,
+            "facial_hair"     to config.facialHair,
+            "eyes"            to config.eyes,
+            "outfit"          to config.outfit,
+            "shoes_hat"       to config.shoesHat,
+            "weapon"          to config.weapon,
+            "expression"      to config.expression,
+            "rig_anim"        to config.rigAnim,
+            "quality"         to config.quality,
+            "export_formats"  to config.exportFormats,
+            "config_json"     to moshi.adapter(CharacterConfig::class.java).toJson(config)
         )
 
         val request = WorkflowDispatchWithInputs(ref = "main", inputs = inputs)
         return try {
             val response = api.dispatchWorkflow(
                 bearer, owner, repo,
-                WorkflowTemplates.WORKFLOW_GENERATE,   // "ara-axev-crime.yml"
+                WorkflowTemplates.WORKFLOW_GENERATE,  // "ara-axev-crime.yml"
                 request
             )
             response.isSuccessful
@@ -172,13 +174,11 @@ class GitHubRepository(private val context: Context) {
         }
     }
 
-    /**
-     * Dispara o smoke test manualmente.
-     * Usa o repositório seleccionado na sessão actual.
-     */
+    // ── Smoke test ────────────────────────────────────────────────────────────
+
     suspend fun runSmokeTest(repoFullName: String): Boolean {
         val bearer = tokenManager.getBearerToken() ?: return false
-        val parts = repoFullName.split("/")
+        val parts  = repoFullName.split("/")
         if (parts.size != 2) return false
         return try {
             val response = api.dispatchWorkflow(
@@ -195,7 +195,7 @@ class GitHubRepository(private val context: Context) {
     }
 
     suspend fun getWorkflowRuns(token: String, repoFullName: String): List<WorkflowRun> {
-        val parts = repoFullName.split("/")
+        val parts  = repoFullName.split("/")
         if (parts.size != 2) return emptyList()
         val bearer = token.asBearerToken()
         return try {
