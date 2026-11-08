@@ -298,8 +298,12 @@ on:
         options:
           - "glb"
           - "fbx"
-          - "glb,fbx"
+          - "obj"
           - "zip"
+          - "glb,fbx"
+          - "glb,obj"
+          - "glb,fbx,obj"
+          - "glb,fbx,obj,zip"
 
       character_id:
         description: "ID do personagem (gerado pela app)"
@@ -338,7 +342,7 @@ jobs:
             echo "::error::character_id inválido: '${'$'}INPUT_ID'"
             exit 1
           fi
-          ALLOWED="glb fbx zip"
+          ALLOWED="glb fbx obj zip"
           IFS=',' read -ra FMTS <<< "${'$'}INPUT_FORMATS"
           for fmt in "${'$'}{FMTS[@]}"; do
             fmt_clean=$(echo "${'$'}fmt" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
