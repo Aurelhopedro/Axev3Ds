@@ -21,6 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.ui.AuthState
 import com.example.ui.MainViewModel
 import com.example.ui.screens.*
 import com.example.ui.components.*
@@ -56,20 +57,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainApp(viewModel: MainViewModel = viewModel()) {
     val navController = rememberNavController()
-    val token by viewModel.token.collectAsState()
+    val authState by viewModel.authState.collectAsState()
     val selectedRepo by viewModel.selectedRepo.collectAsState()
 
-    val startDestination = if (token == null) {
-        Screen.Login.route
-    } else if (selectedRepo == null) {
-        "repo_selection"
-    } else {
-        Screen.Dashboard.route
+    // Determine start destination based on auth and repo state
+    val startDestination = when {
+        authState !is AuthState.Authenticated -> Screen.Login.route
+        selectedRepo == null -> "repo_selection"
+        else -> Screen.Dashboard.route
     }
 
     Scaffold(
         bottomBar = {
-            if (token != null && selectedRepo != null) {
+            if (authState is AuthState.Authenticated && selectedRepo != null) {
                 BottomNavigationBar(navController)
             }
         }
@@ -83,35 +83,22 @@ fun MainApp(viewModel: MainViewModel = viewModel()) {
                 LoginScreen(viewModel)
             }
             composable("repo_selection") {
-                RepoSelectionScreen(
-                    viewModel = viewModel,
-                    onRepoSelected = {
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo("repo_selection") { inclusive = true }
-                        }
-                    },
-                    onCreateRepo = {
-                        navController.navigate("create_repo")
+                RepoSelectionScreen(viewModel) {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo("repo_selection") { inclusive = true }
                     }
-                )
+                }
             }
             composable("create_repo") {
-                CreateRepoScreen(
-                    viewModel = viewModel,
-                    onSuccess = {
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                CreateRepositoryScreen(viewModel) {
+                    // After repo created, go to Dashboard
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo("create_repo") { inclusive = true }
                     }
-                )
+                }
             }
             composable(Screen.Dashboard.route) {
-                DashboardScreen(
-                    viewModel = viewModel,
-                    onCreateRepo = {
-                        navController.navigate("create_repo")
-                    }
-                )
+                DashboardScreen(viewModel)
             }
             composable(Screen.Creator.route) {
                 CreatorScreen(viewModel)
@@ -131,22 +118,33 @@ fun MainApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    // Reagir a mudanças de estado de autenticação
-    LaunchedEffect(token) {
-        if (token == null) {
-            navController.navigate(Screen.Login.route) {
-                popUpTo(0)
-            }
-        } else if (navController.currentDestination?.route == Screen.Login.route) {
-            if (selectedRepo != null) {
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
+    // React to auth state changes
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.Authenticated -> {
+                val currentRoute = navController.currentDestination?.route
+                if (currentRoute == Screen.Login.route || currentRoute == null) {
+                    if (selectedRepo == null) {
+                        navController.navigate("repo_selection") {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    }
                 }
-            } else {
-                navController.navigate("repo_selection") {
-                    popUpTo(Screen.Login.route) { inclusive = true }
+            }
+            is AuthState.Idle -> {
+                // Logged out — go to login
+                val currentRoute = navController.currentDestination?.route
+                if (currentRoute != Screen.Login.route) {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             }
+            else -> { /* waiting states — no navigation */ }
         }
     }
 }
@@ -198,8 +196,30 @@ fun LibraryScreen() {
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
+    val user by viewModel.user.collectAsState()
+    val authState by viewModel.authState.collectAsState()
+
     Column(modifier = Modifier.padding(16.dp)) {
         SectionHeader(title = "STUDIO CONFIGURATION")
+
+        // User info card
+        if (authState is AuthState.Authenticated && user != null) {
+            TacticalCard {
+                Text("CONNECTED ACCOUNT", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "@${user!!.login}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TacticalOrange
+                )
+                user!!.name?.let {
+                    Text(text = it, style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("● Connected via GitHub", style = MaterialTheme.typography.labelSmall, color = Color.Green)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         TacticalCard {
             Text("WORKFLOW STATUS", style = MaterialTheme.typography.labelSmall)
@@ -222,7 +242,9 @@ fun SettingsScreen(viewModel: MainViewModel, onNavigateToSetup: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
-            Text("LOGOUT SESSION")
+            Icon(Icons.Default.Logout, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("SIGN OUT")
         }
     }
 }
