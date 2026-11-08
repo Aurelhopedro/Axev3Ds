@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.models.CharacterConfig
-import com.example.data.models.WorkflowOptions
 import com.example.ui.MainViewModel
 import com.example.ui.UiState
 import com.example.ui.components.SectionHeader
@@ -32,17 +31,25 @@ fun CreatorScreen(viewModel: MainViewModel) {
     val character by viewModel.currentCharacter.collectAsState()
     val uiState   by viewModel.uiState.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Opções dinâmicas — carregadas do YAML do workflow em tempo real
+    val opts by viewModel.workflowOptions.collectAsState()
 
+    Column(modifier = Modifier.fillMaxSize()) {
         StepperHeader(currentStep = currentStep)
 
         Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
             when (currentStep) {
-                1 -> IdentityStep(character)   { viewModel.updateCharacter(it) }
-                2 -> AppearanceStep(character) { viewModel.updateCharacter(it) }
-                3 -> StyleStep(character)      { viewModel.updateCharacter(it) }
-                4 -> ClothingStep(character)   { viewModel.updateCharacter(it) }
-                5 -> ExportStep(character)     { viewModel.updateCharacter(it) }
+                1 -> IdentityStep(character, opts.presets, opts.genderAge)
+                        { viewModel.updateCharacter(it) }
+                2 -> AppearanceStep(character, opts.body, opts.skinTone,
+                        opts.hair, opts.facialHair, opts.eyes)
+                        { viewModel.updateCharacter(it) }
+                3 -> StyleStep(character, opts.expression, opts.rigAnim, opts.quality)
+                        { viewModel.updateCharacter(it) }
+                4 -> ClothingStep(character, opts.outfit, opts.shoesHat, opts.weapon)
+                        { viewModel.updateCharacter(it) }
+                5 -> ExportStep(character, opts.exportFormats)
+                        { viewModel.updateCharacter(it) }
                 6 -> ReviewStep(character, uiState) { viewModel.generate() }
             }
         }
@@ -113,11 +120,9 @@ fun WorkflowDropdown(
         Spacer(modifier = Modifier.height(4.dp))
         Box {
             OutlinedButton(
-                onClick   = { expanded = true },
-                modifier  = Modifier.fillMaxWidth()
-            ) {
-                Text(selected, maxLines = 1)
-            }
+                onClick  = { expanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(selected, maxLines = 1) }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { opt ->
                     DropdownMenuItem(
@@ -133,7 +138,12 @@ fun WorkflowDropdown(
 // ─── Passo 1 — Identidade ─────────────────────────────────────────────────────
 
 @Composable
-fun IdentityStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
+fun IdentityStep(
+    config: CharacterConfig,
+    presets: List<String>,
+    genderAge: List<String>,
+    onUpdate: (CharacterConfig) -> Unit
+) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Character Identity")
         TacticalCard {
@@ -143,17 +153,10 @@ fun IdentityStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
                 onValueChange = { onUpdate(config.copy(name = it)) },
                 modifier      = Modifier.fillMaxWidth()
             )
-            WorkflowDropdown(
-                label    = "PRESET",
-                selected = config.preset,
-                options  = WorkflowOptions.PRESETS
-            ) { onUpdate(config.copy(preset = it)) }
-
-            WorkflowDropdown(
-                label    = "GENDER & AGE",
-                selected = config.genderAge,
-                options  = WorkflowOptions.GENDER_AGE
-            ) { onUpdate(config.copy(genderAge = it)) }
+            WorkflowDropdown("PRESET", config.preset, presets)
+                { onUpdate(config.copy(preset = it)) }
+            WorkflowDropdown("GENDER & AGE", config.genderAge, genderAge)
+                { onUpdate(config.copy(genderAge = it)) }
         }
     }
 }
@@ -161,39 +164,28 @@ fun IdentityStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
 // ─── Passo 2 — Aparência ──────────────────────────────────────────────────────
 
 @Composable
-fun AppearanceStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
+fun AppearanceStep(
+    config: CharacterConfig,
+    body: List<String>,
+    skinTone: List<String>,
+    hair: List<String>,
+    facialHair: List<String>,
+    eyes: List<String>,
+    onUpdate: (CharacterConfig) -> Unit
+) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Physical Traits")
         TacticalCard {
-            WorkflowDropdown(
-                label    = "BODY (muscle:weight:height)",
-                selected = config.body,
-                options  = WorkflowOptions.BODY
-            ) { onUpdate(config.copy(body = it)) }
-
-            WorkflowDropdown(
-                label    = "SKIN TONE",
-                selected = config.skinTone,
-                options  = WorkflowOptions.SKIN_TONE
-            ) { onUpdate(config.copy(skinTone = it)) }
-
-            WorkflowDropdown(
-                label    = "HAIR (style:colour)",
-                selected = config.hair,
-                options  = WorkflowOptions.HAIR
-            ) { onUpdate(config.copy(hair = it)) }
-
-            WorkflowDropdown(
-                label    = "FACIAL HAIR",
-                selected = config.facialHair,
-                options  = WorkflowOptions.FACIAL_HAIR
-            ) { onUpdate(config.copy(facialHair = it)) }
-
-            WorkflowDropdown(
-                label    = "EYE COLOUR",
-                selected = config.eyes,
-                options  = WorkflowOptions.EYES
-            ) { onUpdate(config.copy(eyes = it)) }
+            WorkflowDropdown("BODY (muscle:weight:height)", config.body, body)
+                { onUpdate(config.copy(body = it)) }
+            WorkflowDropdown("SKIN TONE", config.skinTone, skinTone)
+                { onUpdate(config.copy(skinTone = it)) }
+            WorkflowDropdown("HAIR (style:colour)", config.hair, hair)
+                { onUpdate(config.copy(hair = it)) }
+            WorkflowDropdown("FACIAL HAIR", config.facialHair, facialHair)
+                { onUpdate(config.copy(facialHair = it)) }
+            WorkflowDropdown("EYE COLOUR", config.eyes, eyes)
+                { onUpdate(config.copy(eyes = it)) }
         }
     }
 }
@@ -201,27 +193,22 @@ fun AppearanceStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit)
 // ─── Passo 3 — Estilo Visual ──────────────────────────────────────────────────
 
 @Composable
-fun StyleStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
+fun StyleStep(
+    config: CharacterConfig,
+    expression: List<String>,
+    rigAnim: List<String>,
+    quality: List<String>,
+    onUpdate: (CharacterConfig) -> Unit
+) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Visual Direction")
         TacticalCard {
-            WorkflowDropdown(
-                label    = "EXPRESSION",
-                selected = config.expression,
-                options  = WorkflowOptions.EXPRESSION
-            ) { onUpdate(config.copy(expression = it)) }
-
-            WorkflowDropdown(
-                label    = "RIG & ANIMATIONS (rig:anim:pose)",
-                selected = config.rigAnim,
-                options  = WorkflowOptions.RIG_ANIM
-            ) { onUpdate(config.copy(rigAnim = it)) }
-
-            WorkflowDropdown(
-                label    = "QUALITY",
-                selected = config.quality,
-                options  = WorkflowOptions.QUALITY
-            ) { onUpdate(config.copy(quality = it)) }
+            WorkflowDropdown("EXPRESSION", config.expression, expression)
+                { onUpdate(config.copy(expression = it)) }
+            WorkflowDropdown("RIG & ANIMATIONS (rig:anim:pose)", config.rigAnim, rigAnim)
+                { onUpdate(config.copy(rigAnim = it)) }
+            WorkflowDropdown("QUALITY", config.quality, quality)
+                { onUpdate(config.copy(quality = it)) }
         }
     }
 }
@@ -229,27 +216,22 @@ fun StyleStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
 // ─── Passo 4 — Vestuário & Equipamento ───────────────────────────────────────
 
 @Composable
-fun ClothingStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
+fun ClothingStep(
+    config: CharacterConfig,
+    outfit: List<String>,
+    shoesHat: List<String>,
+    weapon: List<String>,
+    onUpdate: (CharacterConfig) -> Unit
+) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Uniform & Gear")
         TacticalCard {
-            WorkflowDropdown(
-                label    = "OUTFIT",
-                selected = config.outfit,
-                options  = WorkflowOptions.OUTFIT
-            ) { onUpdate(config.copy(outfit = it)) }
-
-            WorkflowDropdown(
-                label    = "SHOES : HAT",
-                selected = config.shoesHat,
-                options  = WorkflowOptions.SHOES_HAT
-            ) { onUpdate(config.copy(shoesHat = it)) }
-
-            WorkflowDropdown(
-                label    = "WEAPON",
-                selected = config.weapon,
-                options  = WorkflowOptions.WEAPON
-            ) { onUpdate(config.copy(weapon = it)) }
+            WorkflowDropdown("OUTFIT", config.outfit, outfit)
+                { onUpdate(config.copy(outfit = it)) }
+            WorkflowDropdown("SHOES : HAT", config.shoesHat, shoesHat)
+                { onUpdate(config.copy(shoesHat = it)) }
+            WorkflowDropdown("WEAPON", config.weapon, weapon)
+                { onUpdate(config.copy(weapon = it)) }
         }
     }
 }
@@ -257,15 +239,16 @@ fun ClothingStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
 // ─── Passo 5 — Exportação ─────────────────────────────────────────────────────
 
 @Composable
-fun ExportStep(config: CharacterConfig, onUpdate: (CharacterConfig) -> Unit) {
+fun ExportStep(
+    config: CharacterConfig,
+    exportFormats: List<String>,
+    onUpdate: (CharacterConfig) -> Unit
+) {
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Export Center")
         TacticalCard {
-            WorkflowDropdown(
-                label    = "EXPORT FORMAT(S)",
-                selected = config.exportFormats,
-                options  = WorkflowOptions.EXPORT_FORMATS
-            ) { onUpdate(config.copy(exportFormats = it)) }
+            WorkflowDropdown("EXPORT FORMAT(S)", config.exportFormats, exportFormats)
+                { onUpdate(config.copy(exportFormats = it)) }
         }
     }
 }
@@ -281,21 +264,21 @@ fun ReviewStep(
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         SectionHeader(title = "Final Review")
         TacticalCard {
-            ReviewRow("NAME",    config.name)
-            ReviewRow("PRESET",  config.preset)
-            ReviewRow("GENDER/AGE", config.genderAge)
-            ReviewRow("BODY",    config.body)
-            ReviewRow("SKIN",    config.skinTone)
-            ReviewRow("HAIR",    config.hair)
-            ReviewRow("BEARD",   config.facialHair)
-            ReviewRow("EYES",    config.eyes)
-            ReviewRow("OUTFIT",  config.outfit)
-            ReviewRow("SHOES/HAT", config.shoesHat)
-            ReviewRow("WEAPON",  config.weapon)
-            ReviewRow("EXPRESSION", config.expression)
-            ReviewRow("RIG/ANIM",  config.rigAnim)
-            ReviewRow("QUALITY", config.quality)
-            ReviewRow("FORMATS", config.exportFormats)
+            ReviewRow("NAME",        config.name)
+            ReviewRow("PRESET",      config.preset)
+            ReviewRow("GENDER/AGE",  config.genderAge)
+            ReviewRow("BODY",        config.body)
+            ReviewRow("SKIN",        config.skinTone)
+            ReviewRow("HAIR",        config.hair)
+            ReviewRow("BEARD",       config.facialHair)
+            ReviewRow("EYES",        config.eyes)
+            ReviewRow("OUTFIT",      config.outfit)
+            ReviewRow("SHOES/HAT",   config.shoesHat)
+            ReviewRow("WEAPON",      config.weapon)
+            ReviewRow("EXPRESSION",  config.expression)
+            ReviewRow("RIG/ANIM",    config.rigAnim)
+            ReviewRow("QUALITY",     config.quality)
+            ReviewRow("FORMATS",     config.exportFormats)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -308,20 +291,16 @@ fun ReviewStep(
                     }
                 }
                 is UiState.Success -> {
-                    Text("✅ ${uiState.message}",
-                        color = Color.Green, fontWeight = FontWeight.Bold)
+                    Text("✅ ${uiState.message}", color = Color.Green, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     TacticalButton(text = "Generate Again", onClick = onDispatch)
                 }
                 is UiState.Error -> {
-                    Text("❌ ${uiState.message}",
-                        color = MaterialTheme.colorScheme.error)
+                    Text("❌ ${uiState.message}", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
                     TacticalButton(text = "Retry", onClick = onDispatch)
                 }
-                else -> {
-                    TacticalButton(text = "⚡ Initialize Generation", onClick = onDispatch)
-                }
+                else -> TacticalButton(text = "⚡ Initialize Generation", onClick = onDispatch)
             }
         }
     }
@@ -357,7 +336,6 @@ fun NavigationFooter(currentStep: Int, onBack: () -> Unit, onNext: () -> Unit) {
         } else {
             Spacer(modifier = Modifier.width(1.dp))
         }
-
         if (currentStep < 6) {
             Button(
                 onClick = onNext,
