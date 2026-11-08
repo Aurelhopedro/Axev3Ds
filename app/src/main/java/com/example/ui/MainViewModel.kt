@@ -1,215 +1,3 @@
-package com.example.ui
-
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.data.api.GitHubRepo
-import com.example.data.api.GitHubUser
-import com.example.data.api.WorkflowRun
-import com.example.data.auth.AuthResult
-import com.example.data.auth.GitHubAuthRepository
-import com.example.data.models.CharacterConfig
-import com.example.data.repository.GitHubRepository
-import com.example.data.repository.RepoCreationResult
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-
-sealed class UiState {
-    object Idle : UiState()
-    object Loading : UiState()
-    data class Success(val message: String) : UiState()
-    data class Error(val message: String) : UiState()
-}
-
-/** States for the GitHub Device Flow auth process */
-sealed class AuthState {
-    object Idle : AuthState()
-    object RequestingCode : AuthState()
-    data class WaitingForUser(
-        val userCode: String,
-        val verificationUri: String,
-        val deviceCode: String,
-        val interval: Int,
-        val expiresIn: Int
-    ) : AuthState()
-    object Polling : AuthState()
-    object Authenticated : AuthState()
-    data class Failed(val message: String) : AuthState()
-}
-
-/** States for repo creation */
-sealed class RepoCreationState {
-    object Idle : RepoCreationState()
-    object Creating : RepoCreationState()
-    data class Success(val repo: GitHubRepo) : RepoCreationState()
-    data class AlreadyExists(val name: String) : RepoCreationState()
-    data class Failed(val message: String) : RepoCreationState()
-}
-
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val repository = GitHubRepository(application)
-    private val authRepository = GitHubAuthRepository(application)
-
-    // ── Backwards-compatible flows ────────────────────────────────────────────
-
-    val token: StateFlow<String?> = repository.tokenFlow
-        .stateIn(viewModelScope, SharingStarted.Lazily, null)
-
-    val selectedRepo: StateFlow<String?> = repository.selectedRepoFlow
-        .stateIn(viewModelScope, SharingStarted.Lazily, null)
-
-    // ── UI State ──────────────────────────────────────────────────────────────
-
-    private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
-    val authState: StateFlow<AuthState> = _authState.asStateFlow()
-
-    private val _repoCreationState = MutableStateFlow<RepoCreationState>(RepoCreationState.Idle)
-    val repoCreationState: StateFlow<RepoCreationState> = _repoCreationState.asStateFlow()
-
-    // ── User & Repos ──────────────────────────────────────────────────────────
-
-    private val _user = MutableStateFlow<GitHubUser?>(null)
-    val user: StateFlow<GitHubUser?> = _user.asStateFlow()
-
-    private val _repos = MutableStateFlow<List<GitHubRepo>>(emptyList())
-    val repos: StateFlow<List<GitHubRepo>> = _repos.asStateFlow()
-
-    private val _workflowRuns = MutableStateFlow<List<WorkflowRun>>(emptyList())
-    val workflowRuns: StateFlow<List<WorkflowRun>> = _workflowRuns.asStateFlow()
-
-    private val _currentCharacter = MutableStateFlow(CharacterConfig())
-    val currentCharacter: StateFlow<CharacterConfig> = _currentCharacter.asStateFlow()
-
-    private var pollingJob: Job? = null
-
-    // ── Initialisation ────────────────────────────────────────────────────────
-
-    init {
-        // If already authenticated (session restored), load user data
-        if (authRepository.isAuthenticated()) {
-            _authState.value = AuthState.Authenticated
-            viewModelScope.launch { refreshUserData() }
-        }
-    }
-
-    // ── GitHub Device Flow Auth ───────────────────────────────────────────────
-
-    /**
-     * Step 1: Request a device code and present it to the user.
-     * The user must visit verificationUri and enter userCode.
-     */
-    fun startGitHubAuth() {
-        viewModelScope.launch {
-            _authState.value = AuthState.RequestingCode
-            when (val result = authRepository.requestDeviceCode()) {
-                is AuthResult.DeviceCodeIssued -> {
-                    _authState.value = AuthState.WaitingForUser(
-                        userCode = result.userCode,
-                        verificationUri = result.verificationUri,
-                        deviceCode = result.deviceCode,
-                        interval = result.interval,
-                        expiresIn = result.expiresIn
-                    )
-                    // Start polling immediately
-                    startPolling(result.deviceCode, result.interval, result.expiresIn)
-                }
-                is AuthResult.Error -> _authState.value = AuthState.Failed(result.message)
-                else -> _authState.value = AuthState.Failed("Unexpected result")
-            }
-        }
-    }
-
-    /**
-     * Step 2: Poll GitHub until user approves, denies, or code expires.
-     */
-    private fun startPolling(deviceCode: String, intervalSeconds: Int, expiresIn: Int) {
-        pollingJob?.cancel()
-        val deadline = System.currentTimeMillis() + (expiresIn * 1000L)
-        pollingJob = viewModelScope.launch {
-            var currentInterval = intervalSeconds
-            while (System.currentTimeMillis() < deadline) {
-                when (val result = authRepository.pollForToken(deviceCode, currentInterval)) {
-                    is AuthResult.Success -> {
-                        _authState.value = AuthState.Authenticated
-                        refreshUserData()
-                        return@launch
-                    }
-                    is AuthResult.Pending -> {
-                        // "slow_down" means we must add 5s to the interval
-                        if (result.error == "slow_down") currentInterval += 5
-                        // continue polling
-                    }
-                    is AuthResult.Expired -> {
-                        _authState.value = AuthState.Failed("Code expired. Please try again.")
-                        return@launch
-                    }
-                    is AuthResult.Error -> {
-                        _authState.value = AuthState.Failed(result.message)
-                        return@launch
-                    }
-                    else -> { /* ignore DeviceCodeIssued in polling context */ }
-                }
-            }
-            _authState.value = AuthState.Failed("Authentication timed out. Please try again.")
-        }
-    }
-
-    fun cancelAuth() {
-        pollingJob?.cancel()
-        _authState.value = AuthState.Idle
-    }
-
-    // ── Legacy PAT login (kept for compatibility / demo mode) ─────────────────
-
-    fun login(newToken: String) {
-        val sanitizedToken = newToken.trim()
-        viewModelScope.launch {
-            _uiState.value = UiState.Loading
-            if (sanitizedToken == "123456789") {
-                repository.saveToken(sanitizedToken)
-                _user.value = GitHubUser("axev_dev", "https://github.com/identicons/axev.png", "AXEV Developer")
-                _repos.value = listOf(GitHubRepo("axev-crime-assets", "axev-studio/axev-crime-assets", _user.value!!, "main"))
-                _authState.value = AuthState.Authenticated
-                _uiState.value = UiState.Success("Logged in as Demo User")
-                return@launch
-            }
-            val user = repository.getUser("Bearer $sanitizedToken")
-            if (user != null) {
-                repository.saveToken(sanitizedToken)
-                _authState.value = AuthState.Authenticated
-                _uiState.value = UiState.Success("Logged in as ${user.login}")
-            } else {
-                _uiState.value = UiState.Error("Invalid Token")
-            }
-        }
-    }
-
-    // ── User data ─────────────────────────────────────────────────────────────
-
-    private suspend fun refreshUserData() {
-        val bearer = repository.tokenManager.getBearerToken()
-        if (bearer != null) {
-            _user.value = repository.getUser(bearer)
-            _repos.value = repository.getRepos(bearer)
-        } else {
-            val user = authRepository.fetchUser()
-            if (user != null) {
-                _user.value = user
-                // Also fetch repos via API
-                val t = authRepository.getTokenManager().getBearerToken() ?: return
-                _repos.value = repository.getRepos(t)
-            }
-        }
-    }
-
-    // ── Repo creation ─────────────────────────────────────────────────────────
-
     fun createRepository(
         name: String,
         description: String = "Personal AXEV 3D STUDIO workspace for character generation and 3D assets.",
@@ -217,10 +5,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             _repoCreationState.value = RepoCreationState.Creating
+
+            // Demo mode — simulate success without calling the real API
+            if (token.value == "123456789") {
+                kotlinx.coroutines.delay(1500)
+                val demoRepo = com.example.data.api.GitHubRepo(
+                    name = name,
+                    full_name = "demo/$name",
+                    owner = com.example.data.api.GitHubUser("demo", "https://github.com/identicons/demo.png", "Demo User"),
+                    default_branch = "main",
+                    html_url = "https://github.com/demo/$name",
+                    created_at = "2026-11-08T00:00:00Z"
+                )
+                _repoCreationState.value = RepoCreationState.Success(demoRepo)
+                repository.saveRepo("demo/$name")
+                return@launch
+            }
+
             when (val result = repository.createRepository(name, description, private)) {
                 is RepoCreationResult.Success -> {
                     _repoCreationState.value = RepoCreationState.Success(result.repo)
-                    // Refresh repo list
                     val bearer = repository.tokenManager.getBearerToken()
                     if (bearer != null) _repos.value = repository.getRepos(bearer)
                 }
@@ -233,70 +37,3 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-    fun resetRepoCreationState() {
-        _repoCreationState.value = RepoCreationState.Idle
-    }
-
-    // ── Existing actions ──────────────────────────────────────────────────────
-
-    fun selectRepo(repoFullName: String) {
-        viewModelScope.launch {
-            repository.saveRepo(repoFullName)
-            if (token.value == "123456789") fetchWorkflowRuns()
-        }
-    }
-
-    fun logout() {
-        pollingJob?.cancel()
-        viewModelScope.launch {
-            repository.clearSession()
-            authRepository.logout()
-            _user.value = null
-            _repos.value = emptyList()
-            _workflowRuns.value = emptyList()
-            _authState.value = AuthState.Idle
-            _uiState.value = UiState.Idle
-            _repoCreationState.value = RepoCreationState.Idle
-        }
-    }
-
-    fun fetchWorkflowRuns(t: String? = token.value, r: String? = selectedRepo.value) {
-        if (t == null || r == null) return
-        viewModelScope.launch {
-            if (t == "123456789") {
-                _workflowRuns.value = listOf(
-                    WorkflowRun(1001, "ARA 3D GEN - SOLDIER-01", "completed", "success", "2026-11-07T10:00:00Z", "2026-11-07T10:05:00Z", ""),
-                    WorkflowRun(1002, "ARA 3D GEN - DETECTIVE-X", "in_progress", null, "2026-11-07T11:00:00Z", "2026-11-07T11:01:00Z", "")
-                )
-                return@launch
-            }
-            _workflowRuns.value = repository.getWorkflowRuns(t, r)
-        }
-    }
-
-    fun updateCharacter(config: CharacterConfig) {
-        _currentCharacter.value = config
-    }
-
-    fun generate() {
-        val t = token.value ?: return
-        val r = selectedRepo.value ?: return
-        viewModelScope.launch {
-            _uiState.value = UiState.Loading
-            if (t == "123456789") {
-                delay(2000)
-                _uiState.value = UiState.Success("Generation started (Demo Mode)")
-                fetchWorkflowRuns(t, r)
-                return@launch
-            }
-            val success = repository.generateCharacter(t, r, _currentCharacter.value)
-            if (success) {
-                _uiState.value = UiState.Success("Generation started successfully")
-                fetchWorkflowRuns(t, r)
-            } else {
-                _uiState.value = UiState.Error("Failed to start generation")
-            }
-        }
-    }
-}
