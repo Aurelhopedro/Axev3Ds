@@ -1,15 +1,8 @@
 {
-  "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "backend/api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/auth/callback",
-      "dest": "/backend/api/auth/callback.js"
+      "source": "/api/auth/callback",
+      "destination": "/backend/api/auth/callback.js"
     }
   ]
 }
