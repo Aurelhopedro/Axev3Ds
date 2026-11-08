@@ -12,7 +12,10 @@ interface GitHubApi {
     @POST("login/device/code")
     suspend fun requestDeviceCode(
         @Field("client_id") clientId: String,
-        @Field("scope") scope: String = "public_repo read:user"
+        // FIX: added "workflow" scope — required by GitHub API to dispatch
+        // workflow_dispatch events. Without it, dispatches fail with 403/422
+        // even though the token appears valid for other operations.
+        @Field("scope") scope: String = "repo workflow read:user"
     ): Response<DeviceCodeResponse>
 
     @FormUrlEncoded
@@ -71,6 +74,10 @@ interface GitHubApi {
 
     // ── Workflows ─────────────────────────────────────────────────────────────
 
+    @Headers(
+        "Accept: application/vnd.github+json",
+        "X-GitHub-Api-Version: 2022-11-28"
+    )
     @POST("repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches")
     suspend fun dispatchWorkflow(
         @Header("Authorization") token: String,
@@ -128,6 +135,17 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Path("artifact_id") artifactId: Long
     ): Response<Unit>
+
+    // ── Workflow permissions (diagnóstico) ────────────────────────────────────
+
+    /**
+     * Verifica o estado do token — confirma que tem acesso à API.
+     * Útil para diagnóstico sem fazer uma operação destrutiva.
+     */
+    @GET("user")
+    suspend fun verifyToken(
+        @Header("Authorization") token: String
+    ): Response<GitHubUser>
 }
 
 // ── Device Flow Models ────────────────────────────────────────────────────────
