@@ -17,10 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.data.api.GitHubRepo
 import com.example.ui.MainViewModel
-import com.example.ui.RepoCreateState
+import com.example.ui.RepoCreationState
 import com.example.ui.components.TacticalCard
 
 @Composable
@@ -28,16 +27,15 @@ fun CreateRepoScreen(
     viewModel: MainViewModel,
     onSuccess: () -> Unit
 ) {
-    val repoCreateState by viewModel.repoCreateState.collectAsState()
+    val repoCreateState by viewModel.repoCreationState.collectAsState()
     val context = LocalContext.current
 
     var repoName by remember { mutableStateOf("axev-3d-workspace") }
     var repoDescription by remember { mutableStateOf("Personal AXEV 3D STUDIO workspace for character generation and 3D assets.") }
     var showConfirmDialog by remember { mutableStateOf(false) }
 
-    // Navegar para o dashboard quando criado com sucesso
     LaunchedEffect(repoCreateState) {
-        if (repoCreateState is RepoCreateState.Success) {
+        if (repoCreateState is RepoCreationState.Success) {
             // Aguardar o utilizador confirmar e clicar em "Continue"
         }
     }
@@ -52,7 +50,7 @@ fun CreateRepoScreen(
 
         when (val state = repoCreateState) {
 
-            is RepoCreateState.Idle, is RepoCreateState.Error -> {
+            is RepoCreationState.Idle, is RepoCreationState.Failed -> {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Icon(
@@ -77,7 +75,6 @@ fun CreateRepoScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 TacticalCard {
-                    // Nome do repositório
                     Text("NOME DO REPOSITÓRIO", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
@@ -96,7 +93,6 @@ fun CreateRepoScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Descrição
                     Text("DESCRIÇÃO (opcional)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
@@ -109,7 +105,6 @@ fun CreateRepoScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Visibilidade (apenas pública nesta versão)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -125,8 +120,7 @@ fun CreateRepoScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Erros
-                if (state is RepoCreateState.Error) {
+                if (state is RepoCreationState.Failed) {
                     TacticalCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
@@ -157,7 +151,23 @@ fun CreateRepoScreen(
                 }
             }
 
-            is RepoCreateState.Loading -> {
+            is RepoCreationState.AlreadyExists -> {
+                Spacer(modifier = Modifier.height(80.dp))
+                Icon(Icons.Default.Warning, null, modifier = Modifier.size(56.dp), tint = Color(0xFFFFA000))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Repositório já existe!", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("O repositório '${state.name}' já existe na tua conta.", color = Color.Gray)
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = {
+                    viewModel.resetRepoCreationState()
+                    onSuccess()
+                }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("USAR REPOSITÓRIO EXISTENTE", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            is RepoCreationState.Creating -> {
                 Spacer(modifier = Modifier.height(80.dp))
                 CircularProgressIndicator()
                 Spacer(modifier = Modifier.height(16.dp))
@@ -173,7 +183,7 @@ fun CreateRepoScreen(
                 )
             }
 
-            is RepoCreateState.Success -> {
+            is RepoCreationState.Success -> {
                 RepoSuccessCard(
                     repo = state.repo,
                     onOpenGitHub = {
@@ -184,7 +194,7 @@ fun CreateRepoScreen(
                         viewModel.fetchWorkflowRuns()
                     },
                     onContinue = {
-                        viewModel.resetRepoCreateState()
+                        viewModel.resetRepoCreationState()
                         onSuccess()
                     }
                 )
@@ -194,7 +204,6 @@ fun CreateRepoScreen(
         Spacer(modifier = Modifier.height(32.dp))
     }
 
-    // Diálogo de confirmação
     if (showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
