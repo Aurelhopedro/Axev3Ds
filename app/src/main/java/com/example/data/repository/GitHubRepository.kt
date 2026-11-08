@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import com.example.data.api.CreateFileRequest
 import com.example.data.api.CreateRepoRequest
 import com.example.data.api.GitHubApi
 import com.example.data.api.GitHubRepo
@@ -14,6 +15,7 @@ import com.example.data.github.WorkflowTemplates
 import com.example.data.models.CharacterConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -105,10 +107,10 @@ class GitHubRepository(private val context: Context) {
             ?: return RepoCreationResult.Error("Not authenticated")
         return try {
             val request = CreateRepoRequest(
-                name = name,
+                name        = name,
                 description = description,
-                private = private,
-                auto_init = true
+                private     = private,
+                auto_init   = true
             )
             val response = api.createRepo(bearer, request)
             when {
@@ -116,6 +118,12 @@ class GitHubRepository(private val context: Context) {
                     val repo = response.body()!!
                     tokenManager.saveCreatedRepo(repo.name, repo.owner.login, repo.html_url)
                     tokenManager.saveSelectedRepo(repo.full_name)
+
+                    // ── Injectar workflows automaticamente ────────────────────
+                    // Aguarda 2 s para o GitHub inicializar o branch main
+                    delay(2_000)
+                    injectWorkflows(bearer, repo.owner.login, repo.name)
+
                     RepoCreationResult.Success(repo)
                 }
                 response.code() == 422 -> RepoCreationResult.AlreadyExists(name)
@@ -125,6 +133,36 @@ class GitHubRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             RepoCreationResult.Error("Network error: ${e.message}")
+        }
+    }
+
+    /**
+     * Faz upload dos dois workflows AXEV para .github/workflows/ do repositório
+     * recém-criado, via GitHub Contents API.
+     * Erros são silenciosos — o repositório já foi criado com sucesso.
+     */
+    private suspend fun injectWorkflows(bearer: String, owner: String, repo: String) {
+        val workflows = listOf(
+            ".github/workflows/${WorkflowTemplates.WORKFLOW_GENERATE}" to
+                WorkflowTemplates.generateWorkflowBase64(),
+            ".github/workflows/${WorkflowTemplates.WORKFLOW_SMOKE}" to
+                WorkflowTemplates.smokeWorkflowBase64()
+        )
+        for ((path, content) in workflows) {
+            try {
+                api.createFile(
+                    token   = bearer,
+                    owner   = owner,
+                    repo    = repo,
+                    path    = path,
+                    request = CreateFileRequest(
+                        message = "chore: add AXEV workflow — ${path.substringAfterLast("/")}",
+                        content = content
+                    )
+                )
+            } catch (_: Exception) {
+                // Falha silenciosa — não bloqueia o fluxo de criação
+            }
         }
     }
 
@@ -165,7 +203,7 @@ class GitHubRepository(private val context: Context) {
         return try {
             val response = api.dispatchWorkflow(
                 bearer, owner, repo,
-                WorkflowTemplates.WORKFLOW_GENERATE,  // "ara-axev-crime.yml"
+                WorkflowTemplates.WORKFLOW_GENERATE,
                 request
             )
             response.isSuccessful
@@ -185,7 +223,7 @@ class GitHubRepository(private val context: Context) {
                 token      = bearer,
                 owner      = parts[0],
                 repo       = parts[1],
-                workflowId = WorkflowTemplates.WORKFLOW_SMOKE,  // "axev-smoke-test.yml"
+                workflowId = WorkflowTemplates.WORKFLOW_SMOKE,
                 request    = WorkflowDispatchWithInputs(ref = "main", inputs = emptyMap())
             )
             response.isSuccessful
