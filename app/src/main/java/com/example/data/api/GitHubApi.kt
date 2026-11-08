@@ -47,6 +47,19 @@ interface GitHubApi {
 
     // ── Contents ──────────────────────────────────────────────────────────────
 
+    /**
+     * Obtém os metadados de um ficheiro — incluindo o campo [sha] que é
+     * obrigatório para actualizar (PUT) um ficheiro já existente.
+     * Devolve 404 se o ficheiro não existir.
+     */
+    @GET("repos/{owner}/{repo}/contents/{path}")
+    suspend fun getFileContent(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "path", encoded = true) path: String
+    ): Response<FileContentMeta>
+
     @PUT("repos/{owner}/{repo}/contents/{path}")
     suspend fun createFile(
         @Header("Authorization") token: String,
@@ -164,8 +177,8 @@ data class CreateFileResponse(
 
 @JsonClass(generateAdapter = true)
 data class FileContentMeta(
-    val name: String,
-    val path: String,
+    val name: String? = null,
+    val path: String? = null,
     val sha: String,
     val html_url: String = ""
 )
