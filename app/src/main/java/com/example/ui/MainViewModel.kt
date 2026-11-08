@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.GeneratedFile
@@ -17,10 +18,13 @@ import com.example.data.repository.GitHubRepository
 import com.example.data.repository.RepoCreationResult
 import com.example.data.repository.WorkflowOptionsRepository
 import com.example.data.repository.WorkflowOptionsRepository.DynamicWorkflowOptions
+import com.example.data.repository.WorkflowUpdateResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+private const val TAG = "AXEV/VM"
 
 // ─── Estados da UI ────────────────────────────────────────────────────────────
 
@@ -72,6 +76,19 @@ sealed class WorkspaceSetupState {
     data class Failed(val message: String) : WorkspaceSetupState()
 }
 
+/**
+ * Estado de actualização automática dos workflows num repositório já existente.
+ * Visível no UI para feedback ao utilizador (spinner silencioso → sucesso/erro).
+ */
+sealed class WorkflowUpdateState {
+    object Idle : WorkflowUpdateState()
+    object Updating : WorkflowUpdateState()
+    /** Ambos actualizados com sucesso. */
+    object Done : WorkflowUpdateState()
+    /** Falha parcial: [details] lista o estado de cada workflow. */
+    data class Failed(val details: List<String>) : WorkflowUpdateState()
+}
+
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -102,6 +119,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _workspaceSetupState = MutableStateFlow<WorkspaceSetupState>(WorkspaceSetupState.Idle)
     val workspaceSetupState: StateFlow<WorkspaceSetupState> = _workspaceSetupState.asStateFlow()
 
+    private val _workflowUpdateState = MutableStateFlow<WorkflowUpdateState>(WorkflowUpdateState.Idle)
+    val workflowUpdateState: StateFlow<WorkflowUpdateState> = _workflowUpdateState.asStateFlow()
+
     private val _user = MutableStateFlow<GitHubUser?>(null)
     val user: StateFlow<GitHubUser?> = _user.asStateFlow()
 
@@ -114,20 +134,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentCharacter = MutableStateFlow(CharacterConfig())
     val currentCharacter: StateFlow<CharacterConfig> = _currentCharacter.asStateFlow()
 
-    // Opções dinâmicas carregadas do YAML do workflow
     private val _workflowOptions = MutableStateFlow(DynamicWorkflowOptions())
     val workflowOptions: StateFlow<DynamicWorkflowOptions> = _workflowOptions.asStateFlow()
 
-    // ── Magic Box — estado de geração exposto ao ViewerScreen ─────────────────
     private val _generationStatus = MutableStateFlow<GenerationStatus?>(null)
     val generationStatus: StateFlow<GenerationStatus?> = _generationStatus.asStateFlow()
 
-    // ── Estado de download por artifactId — Map para suportar múltiplos ficheiros
     private val _downloadStates = MutableStateFlow<Map<Long, DownloadStatus>>(emptyMap())
     val downloadStates: StateFlow<Map<Long, DownloadStatus>> = _downloadStates.asStateFlow()
 
     private var lastDispatchedAt: Long = 0L
-
     private var pollingJob:    Job? = null
     private var generationJob: Job? = null
 
@@ -293,13 +309,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ── Actualizar workflows num repositório existente ────────────────────────
+
+    /**
+     * Actualiza os dois workflows no repositório seleccionado.
+     *
+     * Faz GET do SHA de cada ficheiro e PUT com o novo conteúdo.
+     * Chamado automaticamente ao seleccionar um repositório existente,
+     * e disponível para chamada manual pelo UI (ex.: botão "Sync Workflows").
+     *
+     * Não bloqueia a UI — o estado é exposto via [workflowUpdateState].
+     */
+    fun updateWorkflows(repoFullName: String = selectedRepo.value ?: return) {
+        if (token.value == "123456789") {
+            Log.d(TAG, "updateWorkflows: demo mode — skipping")
+            _workflowUpdateState.value = WorkflowUpdateState.Done
+            return
+        }
+
+        viewModelScope.launch {
+            Log.i(TAG, "updateWorkflows: starting for $repoFullName")
+            _workflowUpdateState.value = WorkflowUpdateState.Updating
+
+            when (val result = repository.updateWorkflows(repoFullName)) {
+                is WorkflowUpdateResult.Success -> {
+                    Log.i(TAG, "updateWorkflows: ✅ all workflows up to date")
+                    _workflowUpdateState.value = WorkflowUpdateState.Done
+                }
+                is WorkflowUpdateResult.PartialFailure -> {
+                    Log.e(TAG, "updateWorkflows: ❌ partial failure — ${result.details}")
+                    _workflowUpdateState.value = WorkflowUpdateState.Failed(result.details)
+                }
+                is WorkflowUpdateResult.Error -> {
+                    Log.e(TAG, "updateWorkflows: ❌ error — ${result.message}")
+                    _workflowUpdateState.value = WorkflowUpdateState.Failed(listOf(result.message))
+                }
+            }
+        }
+    }
+
+    fun resetWorkflowUpdateState() {
+        _workflowUpdateState.value = WorkflowUpdateState.Idle
+    }
+
     // ── Acções existentes ─────────────────────────────────────────────────────
 
+    /**
+     * Selecciona um repositório e automaticamente:
+     * 1. Guarda a selecção
+     * 2. Carrega as opções dinâmicas dos dropdowns
+     * 3. Actualiza os workflows (upsert silencioso)
+     */
     fun selectRepo(repoFullName: String) {
         viewModelScope.launch {
             repository.saveRepo(repoFullName)
             loadWorkflowOptions()
-            if (token.value == "123456789") fetchWorkflowRuns()
+            if (token.value == "123456789") {
+                fetchWorkflowRuns()
+                return@launch
+            }
+            // Actualizar workflows silenciosamente em background
+            Log.i(TAG, "selectRepo: auto-updating workflows for $repoFullName")
+            updateWorkflows(repoFullName)
         }
     }
 
@@ -309,17 +380,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.clearSession()
             authRepository.logout()
-            _user.value              = null
-            _repos.value             = emptyList()
-            _workflowRuns.value      = emptyList()
-            _workflowOptions.value   = DynamicWorkflowOptions()
-            _authState.value         = AuthState.Idle
-            _uiState.value           = UiState.Idle
-            _repoCreationState.value = RepoCreationState.Idle
-            _smokeTestState.value    = SmokeTestState.Idle
+            _user.value                = null
+            _repos.value               = emptyList()
+            _workflowRuns.value        = emptyList()
+            _workflowOptions.value     = DynamicWorkflowOptions()
+            _authState.value           = AuthState.Idle
+            _uiState.value             = UiState.Idle
+            _repoCreationState.value   = RepoCreationState.Idle
+            _smokeTestState.value      = SmokeTestState.Idle
             _workspaceSetupState.value = WorkspaceSetupState.Idle
-            _generationStatus.value  = null
-            _downloadStates.value    = emptyMap()
+            _workflowUpdateState.value = WorkflowUpdateState.Idle
+            _generationStatus.value    = null
+            _downloadStates.value      = emptyMap()
         }
     }
 
@@ -351,7 +423,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         generationJob?.cancel()
         _generationStatus.value = GenerationStatus.Preparing()
-        _downloadStates.value = emptyMap() // limpar downloads anteriores
+        _downloadStates.value = emptyMap()
 
         generationJob = viewModelScope.launch {
             _uiState.value = UiState.Loading
@@ -361,8 +433,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val config = _currentCharacter.value
-
+            val config  = _currentCharacter.value
             val success = repository.generateCharacter(t, r, config)
             if (!success) {
                 _generationStatus.value = GenerationStatus.Failed(
@@ -376,12 +447,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = UiState.Success("Generation started")
             fetchWorkflowRuns(t, r)
 
-            // FIX: usar config.id (que é o character_id enviado ao workflow),
-            // não config.name. O artifact é publicado como AXEV-CHARACTER-{config.id}
-            // e o polling filtra por este valor — sem este fix o artifact
-            // nunca era encontrado e o estado ficava em Processing até timeout.
             val characterId = config.id
-
             generationRepo.pollUntilReady(r, characterId, lastDispatchedAt, config.quality)
                 .collect { status -> _generationStatus.value = status }
         }
@@ -396,14 +462,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Download de artifact ──────────────────────────────────────────────────
 
-    /**
-     * Descarrega um artifact diretamente para a pasta Downloads do dispositivo.
-     * O estado é rastreado por artifactId para suportar múltiplos downloads em paralelo.
-     */
     fun downloadFile(file: GeneratedFile) {
         val repo = selectedRepo.value ?: return
 
-        // Modo demo — simular download
         if (token.value == "123456789") {
             viewModelScope.launch {
                 _downloadStates.value = _downloadStates.value + (file.artifactId to DownloadStatus.Downloading)
@@ -415,9 +476,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _downloadStates.value = _downloadStates.value + (file.artifactId to DownloadStatus.Downloading)
-
             val result = generationRepo.downloadArtifact(file, repo)
-
             _downloadStates.value = _downloadStates.value + (file.artifactId to result)
         }
     }
@@ -437,22 +496,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _generationStatus.value = GenerationStatus.Processing(msg, progress)
             delay(1200)
         }
-
         val demoFiles = listOf(
-            GeneratedFile(
-                name         = "soldier_01.glb",
-                extension    = "glb",
-                sizeBytes    = 19_267_584L,
-                downloadUrl  = "https://github.com/demo",
-                artifactId   = 1001L
-            ),
-            GeneratedFile(
-                name         = "soldier_01.fbx",
-                extension    = "fbx",
-                sizeBytes    = 25_296_896L,
-                downloadUrl  = "https://github.com/demo",
-                artifactId   = 1002L
-            )
+            GeneratedFile("soldier_01.glb",  "glb", 19_267_584L, "https://github.com/demo", 1001L),
+            GeneratedFile("soldier_01.fbx",  "fbx", 25_296_896L, "https://github.com/demo", 1002L)
         )
         _generationStatus.value = GenerationStatus.Ready(demoFiles)
         _uiState.value = UiState.Success("Demo generation complete")
