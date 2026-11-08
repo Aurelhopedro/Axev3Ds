@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.secrets)
-    alias(libs.plugins.google.services)
 }
 
 android {
@@ -110,14 +109,6 @@ dependencies {
 
     // Security
     implementation(libs.androidx.security.crypto)
-
-    // Firebase BOM
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.ai)
-    implementation(libs.firebase.appcheck.recaptcha)
-    implementation(libs.firebase.appcheck.debug)
-    implementation(libs.firebase.firestore)
-    implementation(libs.firebase.auth)
 
     // Credentials / Google Sign-In
     implementation(libs.androidx.credentials)
