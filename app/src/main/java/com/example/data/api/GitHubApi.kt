@@ -101,6 +101,20 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Path("artifact_id") artifactId: Long
     ): Response<GitHubArtifact>
+
+    /**
+     * Inicia o download de um artifact — devolve HTTP 302 com o URL real no header Location.
+     * O Retrofit NÃO deve seguir este redirect automaticamente (ver OkHttp abaixo).
+     * O URL de destino (Azure/AWS blob) não aceita o header Authorization — tem de ser
+     * retirado antes do segundo pedido.
+     */
+    @GET("repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip")
+    suspend fun getArtifactDownloadRedirect(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("artifact_id") artifactId: Long
+    ): Response<Unit>
 }
 
 // ── Device Flow Models ────────────────────────────────────────────────────────
