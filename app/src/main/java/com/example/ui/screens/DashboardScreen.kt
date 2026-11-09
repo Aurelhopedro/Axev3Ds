@@ -33,13 +33,8 @@ import com.example.ui.components.StatusBadge
 import com.example.ui.components.TacticalCard
 import com.example.ui.theme.*
 
-// ─── Brush de gradiente reutilizável ─────────────────────────────────────────
-private val OrangeGradient = Brush.linearGradient(
-    listOf(GradientStart, GradientMid)
-)
-private val SubtleBorder = Brush.linearGradient(
-    listOf(BorderOrange, BorderSubtle, BorderOrange)
-)
+private val OrangeGradient = Brush.linearGradient(listOf(GradientStart, GradientMid))
+private val SubtleBorder   = Brush.linearGradient(listOf(BorderOrange, BorderSubtle, BorderOrange))
 
 @Composable
 fun DashboardScreen(
@@ -52,9 +47,9 @@ fun DashboardScreen(
     val runs           by viewModel.workflowRuns.collectAsState()
     val smokeState     by viewModel.smokeTestState.collectAsState()
     val workflowOpts   by viewModel.workflowOptions.collectAsState()
+    val flags          by viewModel.flags.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Animação de entrada geral
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
@@ -94,6 +89,13 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
+            // ── Banner de manutenção (flag remota) ────────────────────────
+            if (flags.maintenanceMode) {
+                item {
+                    MaintenanceBanner(message = flags.maintenanceMessage)
+                }
+            }
+
             // ── Cabeçalho ─────────────────────────────────────────────────
             item {
                 UserHeader(
@@ -103,18 +105,21 @@ fun DashboardScreen(
                     onRefresh = {
                         viewModel.fetchWorkflowRuns()
                         viewModel.loadWorkflowOptions()
+                        viewModel.loadFlags()
                     },
                     onLogout  = { showLogoutDialog = true }
                 )
             }
 
-            // ── Botão principal ───────────────────────────────────────────
-            item {
-                if (repo != null && onNavigateToViewer != null) {
-                    GenerateButton(onClick = {
-                        viewModel.generate()
-                        onNavigateToViewer()
-                    })
+            // ── Botão principal (oculto em manutenção) ────────────────────
+            if (!flags.maintenanceMode) {
+                item {
+                    if (repo != null && onNavigateToViewer != null) {
+                        GenerateButton(onClick = {
+                            viewModel.generate()
+                            onNavigateToViewer()
+                        })
+                    }
                 }
             }
 
@@ -125,23 +130,23 @@ fun DashboardScreen(
                 }
             }
 
-            // ── Smoke Test ────────────────────────────────────────────────
-            item {
-                SmokeTestCard(
-                    state   = smokeState,
-                    hasRepo = repo != null,
-                    onRun   = { viewModel.runSmokeTest() },
-                    onReset = { viewModel.resetSmokeTestState() }
-                )
+            // ── Smoke Test (controlado por flag) ──────────────────────────
+            if (flags.smokeTestEnabled) {
+                item {
+                    SmokeTestCard(
+                        state   = smokeState,
+                        hasRepo = repo != null,
+                        onRun   = { viewModel.runSmokeTest() },
+                        onReset = { viewModel.resetSmokeTestState() }
+                    )
+                }
             }
 
             // ── Stats rápidas ─────────────────────────────────────────────
             item { QuickStats(runs) }
 
             // ── Recent Activity ───────────────────────────────────────────
-            item {
-                SectionHeader(title = "Recent Activity")
-            }
+            item { SectionHeader(title = "Recent Activity") }
 
             if (runs.isEmpty()) {
                 item {
@@ -157,10 +162,35 @@ fun DashboardScreen(
                     }
                 }
             } else {
-                items(runs) { run ->
-                    GenerationItem(run)
-                }
+                items(runs) { run -> GenerationItem(run) }
             }
+        }
+    }
+}
+
+// ─── Banner de manutenção ─────────────────────────────────────────────────────
+
+@Composable
+fun MaintenanceBanner(message: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFFFC107).copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+        shape  = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2200))
+    ) {
+        Row(
+            modifier          = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🔧", fontSize = 20.sp)
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text  = message.ifBlank { "Service is under maintenance. Please check back later." },
+                color = Color(0xFFFFC107),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
@@ -180,21 +210,13 @@ fun GenerateButton(onClick: () -> Unit) {
         label = "glowAlpha"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(60.dp)
-    ) {
-        // Glow por baixo do botão
+    Box(modifier = Modifier.fillMaxWidth().height(60.dp)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp)
                 .blur(16.dp)
-                .background(
-                    TacticalOrange.copy(alpha = glowAlpha * 0.35f),
-                    RoundedCornerShape(16.dp)
-                )
+                .background(TacticalOrange.copy(alpha = glowAlpha * 0.35f), RoundedCornerShape(16.dp))
         )
         Button(
             onClick  = onClick,
@@ -204,24 +226,13 @@ fun GenerateButton(onClick: () -> Unit) {
             contentPadding = PaddingValues(0.dp)
         ) {
             Box(
-                modifier          = Modifier
-                    .fillMaxSize()
-                    .background(OrangeGradient, RoundedCornerShape(16.dp)),
+                modifier          = Modifier.fillMaxSize().background(OrangeGradient, RoundedCornerShape(16.dp)),
                 contentAlignment  = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment    = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     Text("⚡", fontSize = 20.sp)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        "Generate Character",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize   = 16.sp,
-                        color      = Color.White,
-                        letterSpacing = 0.5.sp
-                    )
+                    Text("Generate Character", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color.White, letterSpacing = 0.5.sp)
                 }
             }
         }
@@ -231,12 +242,7 @@ fun GenerateButton(onClick: () -> Unit) {
 // ─── Card de Smoke Test ───────────────────────────────────────────────────────
 
 @Composable
-fun SmokeTestCard(
-    state: SmokeTestState,
-    hasRepo: Boolean,
-    onRun: () -> Unit,
-    onReset: () -> Unit
-) {
+fun SmokeTestCard(state: SmokeTestState, hasRepo: Boolean, onRun: () -> Unit, onReset: () -> Unit) {
     val borderColor = when (state) {
         is SmokeTestState.Started -> SuccessGreen
         is SmokeTestState.Failed  -> ErrorRed
@@ -245,105 +251,54 @@ fun SmokeTestCard(
     }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, borderColor.copy(alpha = 0.6f), RoundedCornerShape(16.dp)),
+        modifier = Modifier.fillMaxWidth().border(1.dp, borderColor.copy(alpha = 0.6f), RoundedCornerShape(16.dp)),
         shape  = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier         = Modifier
-                        .size(40.dp)
-                        .background(TacticalOrangeGlow, RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.BugReport,
-                        contentDescription = null,
-                        tint     = TacticalOrange,
-                        modifier = Modifier.size(22.dp)
-                    )
+                Box(modifier = Modifier.size(40.dp).background(TacticalOrangeGlow, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.BugReport, null, tint = TacticalOrange, modifier = Modifier.size(22.dp))
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Smoke Test", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 15.sp)
-                    Text(
-                        "6 test cases · all critical paths",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
+                    Text("6 test cases · all critical paths", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                 }
             }
-
             Spacer(modifier = Modifier.height(14.dp))
-
             when (state) {
                 is SmokeTestState.Running -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier    = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color       = TacticalOrange
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = TacticalOrange)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("Dispatching to GitHub Actions…", color = TextSecondary, fontSize = 13.sp)
                     }
                 }
                 is SmokeTestState.Started -> {
-                    Text(
-                        "✅  ${state.message}",
-                        color = SuccessGreen,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
+                    Text("✅  ${state.message}", color = SuccessGreen, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = onReset,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                    OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = SuccessGreen),
                         border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(0.5f))
                     ) { Text("OK") }
                 }
                 is SmokeTestState.Failed -> {
-                    Text(
-                        "❌  ${state.message}",
-                        color = ErrorRed,
-                        fontSize = 14.sp
-                    )
+                    Text("❌  ${state.message}", color = ErrorRed, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick  = onRun,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape    = RoundedCornerShape(12.dp),
-                        colors   = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                    Button(onClick = onRun, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
                     ) { Text("Retry Smoke Test") }
                 }
                 else -> {
-                    Button(
-                        onClick  = onRun,
-                        enabled  = hasRepo,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape    = RoundedCornerShape(12.dp),
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor = TacticalOrange,
-                            disabledContainerColor = BorderSubtle
-                        )
+                    Button(onClick = onRun, enabled = hasRepo, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TacticalOrange, disabledContainerColor = BorderSubtle)
                     ) {
                         Icon(Icons.Default.BugReport, null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Run Smoke Test")
                     }
-                    if (!hasRepo) {
-                        Text(
-                            "Create a repository first",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
-                            modifier = Modifier.padding(top = 6.dp)
-                        )
-                    }
+                    if (!hasRepo) Text("Create a repository first", style = MaterialTheme.typography.labelSmall, color = TextMuted, modifier = Modifier.padding(top = 6.dp))
                 }
             }
         }
@@ -355,33 +310,19 @@ fun SmokeTestCard(
 @Composable
 fun CreateRepoPromptCard(onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
             .border(1.dp, SuccessGreen.copy(0.3f), RoundedCornerShape(16.dp)),
         shape  = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated)
     ) {
-        Row(
-            modifier          = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier         = Modifier
-                    .size(42.dp)
-                    .background(SuccessGlow, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(42.dp).background(SuccessGlow, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.FolderSpecial, null, tint = SuccessGreen, modifier = Modifier.size(22.dp))
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Create My 3D Repository", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 15.sp)
-                Text(
-                    "Set up your GitHub workspace for AXEV 3D Studio",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                Text("Set up your GitHub workspace for AXEV 3D Studio", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             Icon(Icons.Default.ArrowForwardIos, null, tint = TextMuted, modifier = Modifier.size(16.dp))
         }
@@ -399,78 +340,34 @@ fun UserHeader(
     onLogout: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, BorderSubtle, RoundedCornerShape(20.dp)),
+        modifier = Modifier.fillMaxWidth().border(1.dp, BorderSubtle, RoundedCornerShape(20.dp)),
         shape  = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated)
     ) {
-        Row(
-            modifier          = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Avatar com borda laranja
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .border(2.dp, OrangeGradient, CircleShape)
-                    .padding(2.dp)
-                    .clip(CircleShape)
-            ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(52.dp).border(2.dp, OrangeGradient, CircleShape).padding(2.dp).clip(CircleShape)) {
                 if (user?.avatar_url != null) {
-                    AsyncImage(
-                        model              = user.avatar_url,
-                        contentDescription = null,
-                        modifier           = Modifier.fillMaxSize(),
-                        contentScale       = ContentScale.Crop
-                    )
+                    AsyncImage(model = user.avatar_url, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
-                    Icon(Icons.Default.AccountCircle, null,
-                        modifier = Modifier.fillMaxSize(), tint = TextSecondary)
+                    Icon(Icons.Default.AccountCircle, null, modifier = Modifier.fillMaxSize(), tint = TextSecondary)
                 }
             }
-
             Spacer(modifier = Modifier.width(14.dp))
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text  = user?.name ?: user?.login ?: "Demo User",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    "@${user?.login ?: "demo"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
+                Text(text = user?.name ?: user?.login ?: "Demo User", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("@${user?.login ?: "demo"}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        repo ?: "No repository",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TacticalOrange
-                    )
+                    Text(repo ?: "No repository", style = MaterialTheme.typography.labelSmall, color = TacticalOrange)
                     if (isLive) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(modifier = Modifier.size(6.dp).background(SuccessGreen, CircleShape))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "LIVE",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SuccessGreen,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
+                        Text("LIVE", style = MaterialTheme.typography.labelSmall, color = SuccessGreen, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
                 }
             }
-
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Default.Refresh, null, tint = TextSecondary)
-            }
-            IconButton(onClick = onLogout) {
-                Icon(Icons.Default.Logout, null, tint = TextMuted)
-            }
+            IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, tint = TextSecondary) }
+            IconButton(onClick = onLogout) { Icon(Icons.Default.Logout, null, tint = TextMuted) }
         }
     }
 }
@@ -482,14 +379,10 @@ fun QuickStats(runs: List<WorkflowRun>) {
     val completed  = runs.count { it.conclusion == "success" }
     val inProgress = runs.count { it.status == "in_progress" || it.status == "queued" }
     val failed     = runs.count { it.conclusion == "failure" }
-
-    Row(
-        modifier              = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        StatItem("DONE",    completed.toString(),  SuccessGreen, Modifier.weight(1f))
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        StatItem("DONE",    completed.toString(),  SuccessGreen,   Modifier.weight(1f))
         StatItem("RUNNING", inProgress.toString(), TacticalOrange, Modifier.weight(1f))
-        StatItem("FAILED",  failed.toString(),     ErrorRed, Modifier.weight(1f))
+        StatItem("FAILED",  failed.toString(),     ErrorRed,       Modifier.weight(1f))
     }
 }
 
@@ -500,24 +393,10 @@ fun StatItem(label: String, value: String, color: Color, modifier: Modifier = Mo
         shape    = RoundedCornerShape(14.dp),
         colors   = CardDefaults.cardColors(containerColor = SurfaceElevated)
     ) {
-        Column(
-            modifier              = Modifier.padding(vertical = 14.dp, horizontal = 8.dp),
-            horizontalAlignment   = Alignment.CenterHorizontally,
-            verticalArrangement   = Arrangement.Center
-        ) {
-            Text(
-                text  = value,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                color = color
-            )
+        Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(text = value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = color)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text  = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                letterSpacing = 1.sp
-            )
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextMuted, letterSpacing = 1.sp)
         }
     }
 }
@@ -527,28 +406,14 @@ fun StatItem(label: String, value: String, color: Color, modifier: Modifier = Mo
 @Composable
 fun GenerationItem(run: WorkflowRun) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp)),
+        modifier = Modifier.fillMaxWidth().border(1.dp, BorderSubtle, RoundedCornerShape(14.dp)),
         shape  = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceElevated)
     ) {
-        Row(
-            modifier          = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text  = run.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text  = "ID: ${run.id}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
+                Text(text = run.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "ID: ${run.id}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
             StatusBadge(status = run.conclusion ?: run.status)
         }
