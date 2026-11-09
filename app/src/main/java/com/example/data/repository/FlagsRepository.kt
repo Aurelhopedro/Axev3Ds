@@ -74,7 +74,7 @@ class FlagsRepository(private val context: Context) {
             val request = Request.Builder().url(url).build()
             val body = http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "load: HTTP ${response.code()} — using defaults")
+                    Log.w(TAG, "load: HTTP ${response.code} — using defaults")
                     return@withContext AppFlags()
                 }
                 response.body?.string() ?: return@withContext AppFlags()
