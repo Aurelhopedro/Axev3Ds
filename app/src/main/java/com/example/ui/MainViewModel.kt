@@ -15,10 +15,12 @@ import com.example.data.repository.GenerationRepository
 import com.example.data.repository.GenerationRepository.DownloadStatus
 import com.example.data.repository.GenerationRepository.GenerationStatus
 import com.example.data.repository.GitHubRepository
+import com.example.data.repository.RemoteConfigRepository
 import com.example.data.repository.RepoCreationResult
 import com.example.data.repository.WorkflowOptionsRepository
 import com.example.data.repository.WorkflowOptionsRepository.DynamicWorkflowOptions
 import com.example.data.repository.WorkflowUpdateResult
+import com.example.data.github.WorkflowTemplates
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -91,6 +93,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val authRepository    = GitHubAuthRepository(application)
     private val optionsRepository = WorkflowOptionsRepository(application)
     private val generationRepo    = GenerationRepository(application)
+    private val remoteConfig      = RemoteConfigRepository(application)
 
     val token: StateFlow<String?> = repository.tokenFlow
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -174,9 +177,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun handleOAuthCallback(token: String) {
         when (val result = authRepository.handleWebCallback(token)) {
             is AuthResult.Success -> {
-                // FIX: also save the token in GitHubRepository's tokenManager
-                // so that resolveToken() finds it immediately without waiting
-                // for the StateFlow to propagate.
                 viewModelScope.launch {
                     repository.saveToken(result.accessToken)
                     _authState.value = AuthState.Authenticated
@@ -227,7 +227,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Dados do utilizador ───────────────────────────────────────────────────
 
     private suspend fun refreshUserData() {
-        // FIX: use resolveToken() so Web-Flow auth is picked up immediately
         val bearer = repository.resolveToken()
             ?: authRepository.tokenManager.getBearerToken()
         if (bearer != null) {
@@ -261,7 +260,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     owner         = GitHubUser("demo", "https://github.com/identicons/demo.png", "Demo User"),
                     default_branch = "main",
                     html_url      = "https://github.com/demo/$name",
-                    created_at    = "2026-11-08T00:00:00Z"
+                    created_at    = "2026-11-09T00:00:00Z"
                 )
                 _repoCreationState.value = RepoCreationState.Success(demoRepo)
                 repository.saveRepo("demo/$name")
@@ -393,7 +392,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
-            // FIX: use a non-null token from resolveToken()
             val bearer = repository.resolveToken() ?: return@launch
             _workflowRuns.value = repository.getWorkflowRuns(bearer, r)
         }
@@ -412,10 +410,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // FIX: use resolveToken() instead of the StateFlow value.
-        // The StateFlow is initialized once at ViewModel creation from the
-        // tokenManager and never re-emits, so a token saved after init
-        // (e.g. Web Flow callback) would be invisible to it.
         val t = repository.resolveToken() ?: run {
             Log.e(TAG, "generate: no token available")
             _generationStatus.value = GenerationStatus.Failed("Not authenticated. Please log in again.")
@@ -434,8 +428,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val config  = _currentCharacter.value
+            val config = _currentCharacter.value
             Log.i(TAG, "generate: starting for character_id=${config.id} in $r")
+
+            // ── REMOTE CONFIG: verificar se há workflow mais recente ───────────
+            Log.d(TAG, "generate: checking remote config for workflow updates")
+            val remoteYaml = remoteConfig.fetchWorkflowIfNewer(
+                workflowFilename = WorkflowTemplates.WORKFLOW_GENERATE,
+                token            = null   // público — sem token necessário
+            )
+            if (remoteYaml != null) {
+                Log.i(TAG, "generate: remote workflow is newer — updating in user repo before dispatch")
+                // Injeta o workflow remoto no repositório do utilizador
+                repository.updateWorkflowContent(r, WorkflowTemplates.WORKFLOW_GENERATE, remoteYaml)
+            } else {
+                Log.d(TAG, "generate: local workflow is up to date — no update needed")
+            }
+            // ─────────────────────────────────────────────────────────────────
 
             val success = repository.generateCharacter(t, r, config)
             if (!success) {
