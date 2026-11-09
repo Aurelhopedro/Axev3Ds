@@ -88,7 +88,7 @@ class GitHubRepository(private val context: Context) {
             if (response.isSuccessful) {
                 response.body()
             } else {
-                Log.e(TAG, "getUser: HTTP ${response.code} — ${response.errorBody()?.string()}")
+                Log.e(TAG, "getUser: HTTP ${response.code()} — ${response.errorBody()?.string()}")
                 null
             }
         } catch (e: Exception) {
@@ -104,7 +104,7 @@ class GitHubRepository(private val context: Context) {
             if (response.isSuccessful) {
                 response.body() ?: emptyList()
             } else {
-                Log.e(TAG, "getRepos: HTTP ${response.code} — ${response.errorBody()?.string()}")
+                Log.e(TAG, "getRepos: HTTP ${response.code()} — ${response.errorBody()?.string()}")
                 emptyList()
             }
         } catch (e: Exception) {
@@ -153,23 +153,23 @@ class GitHubRepository(private val context: Context) {
                     Log.i(TAG, "createRepository: created ${repo.full_name}")
                     RepoCreationResult.Success(repo)
                 }
-                response.code == 422 -> {
+                response.code() == 422 -> {
                     Log.w(TAG, "createRepository: repo '$name' already exists")
                     RepoCreationResult.AlreadyExists(name)
                 }
-                response.code == 401 -> {
+                response.code() == 401 -> {
                     Log.e(TAG, "createRepository: 401 Unauthorized")
                     RepoCreationResult.Error("Unauthorized — token may be expired")
                 }
-                response.code == 403 -> {
+                response.code() == 403 -> {
                     val err = response.errorBody()?.string() ?: ""
                     Log.e(TAG, "createRepository: 403 Forbidden — $err")
                     RepoCreationResult.Error("Permission denied")
                 }
                 else -> {
                     val err = response.errorBody()?.string() ?: ""
-                    Log.e(TAG, "createRepository: HTTP ${response.code} — $err")
-                    RepoCreationResult.Error("GitHub error: HTTP ${response.code}")
+                    Log.e(TAG, "createRepository: HTTP ${response.code()} — $err")
+                    RepoCreationResult.Error("GitHub error: HTTP ${response.code()}")
                 }
             }
         } catch (e: Exception) {
@@ -211,12 +211,12 @@ class GitHubRepository(private val context: Context) {
                             content = content
                         )
                     )
-                    when (response.code) {
+                    when (response.code()) {
                         200, 201 -> Log.i(TAG, "setupWorkspace[$fileName]: created OK")
                         422      -> Log.w(TAG, "setupWorkspace[$fileName]: already exists (422) — skipping")
                         else     -> {
                             val err = response.errorBody()?.string() ?: ""
-                            Log.e(TAG, "setupWorkspace[$fileName]: HTTP ${response.code} — $err")
+                            Log.e(TAG, "setupWorkspace[$fileName]: HTTP ${response.code()} — $err")
                             allSuccess = false
                         }
                     }
@@ -265,13 +265,13 @@ class GitHubRepository(private val context: Context) {
 
             val existingSha: String? = try {
                 val r = api.getFileContent(bearer, owner, repo, path)
-                when (r.code) {
+                when (r.code()) {
                     200  -> r.body()?.sha
                     404  -> null
                     else -> {
                         val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: GET ${r.code} — $err")
-                        details.add("❌ $fileName: erro ao verificar (${r.code})")
+                        Log.e(TAG, "updateWorkflows[$fileName]: GET ${r.code()} — $err")
+                        details.add("❌ $fileName: erro ao verificar (${r.code()})")
                         anyFailed = true
                         continue
                     }
@@ -302,7 +302,7 @@ class GitHubRepository(private val context: Context) {
                         branch  = "main"
                     )
                 )
-                when (r.code) {
+                when (r.code()) {
                     200, 201 -> {
                         Log.i(TAG, "updateWorkflows[$fileName]: ✅ $action OK")
                         details.add("✅ $fileName: ${if (existingSha != null) "actualizado" else "criado"}")
@@ -320,8 +320,8 @@ class GitHubRepository(private val context: Context) {
                     }
                     else -> {
                         val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: PUT ${r.code} — $err")
-                        details.add("❌ $fileName: HTTP ${r.code} ao $action — $err")
+                        Log.e(TAG, "updateWorkflows[$fileName]: PUT ${r.code()} — $err")
+                        details.add("❌ $fileName: HTTP ${r.code()} ao $action — $err")
                         anyFailed = true
                     }
                 }
@@ -336,11 +336,6 @@ class GitHubRepository(private val context: Context) {
                else           WorkflowUpdateResult.Success
     }
 
-    /**
-     * Injeta um conteúdo YAML remoto num workflow específico do repositório do utilizador.
-     * Chamado pelo MainViewModel quando o RemoteConfigRepository encontra uma versão mais recente.
-     * Falha silenciosamente — o dispatch continua mesmo que a actualização falhe.
-     */
     suspend fun updateWorkflowContent(
         repoFullName: String,
         workflowFilename: String,
@@ -357,10 +352,9 @@ class GitHubRepository(private val context: Context) {
         val path  = ".github/workflows/$workflowFilename"
 
         try {
-            // Obter SHA actual (se existir)
             val existingSha: String? = try {
                 val r = api.getFileContent(bearer, owner, repo, path)
-                if (r.code == 200) r.body()?.sha else null
+                if (r.code() == 200) r.body()?.sha else null
             } catch (e: Exception) { null }
 
             val encodedContent = Base64.getEncoder().encodeToString(
@@ -383,7 +377,7 @@ class GitHubRepository(private val context: Context) {
                 Log.i(TAG, "updateWorkflowContent: ✅ $workflowFilename updated from remote config")
             } else {
                 val err = r.errorBody()?.string() ?: ""
-                Log.w(TAG, "updateWorkflowContent: HTTP ${r.code} — $err (non-fatal, dispatch continues)")
+                Log.w(TAG, "updateWorkflowContent: HTTP ${r.code()} — $err (non-fatal, dispatch continues)")
             }
         } catch (e: Exception) {
             Log.w(TAG, "updateWorkflowContent: exception — ${e.message} (non-fatal, dispatch continues)", e)
@@ -439,12 +433,12 @@ class GitHubRepository(private val context: Context) {
                 request
             )
             if (response.isSuccessful) {
-                Log.i(TAG, "generateCharacter: dispatch OK (HTTP ${response.code})")
+                Log.i(TAG, "generateCharacter: dispatch OK (HTTP ${response.code()})")
                 true
             } else {
                 val errBody = response.errorBody()?.string() ?: "(sem body)"
                 Log.e(TAG, "generateCharacter: dispatch FAILED")
-                Log.e(TAG, "  → HTTP ${response.code}")
+                Log.e(TAG, "  → HTTP ${response.code()}")
                 Log.e(TAG, "  → body: $errBody")
                 Log.e(TAG, "  → token starts with: ${bearer.take(20)}…")
                 false
@@ -475,7 +469,7 @@ class GitHubRepository(private val context: Context) {
                 true
             } else {
                 val errBody = response.errorBody()?.string() ?: ""
-                Log.e(TAG, "runSmokeTest: HTTP ${response.code} — body: $errBody")
+                Log.e(TAG, "runSmokeTest: HTTP ${response.code()} — body: $errBody")
                 false
             }
         } catch (e: Exception) {
@@ -493,7 +487,7 @@ class GitHubRepository(private val context: Context) {
             if (response.isSuccessful) {
                 response.body()?.workflow_runs ?: emptyList()
             } else {
-                Log.e(TAG, "getWorkflowRuns: HTTP ${response.code} — ${response.errorBody()?.string()}")
+                Log.e(TAG, "getWorkflowRuns: HTTP ${response.code()} — ${response.errorBody()?.string()}")
                 emptyList()
             }
         } catch (e: Exception) {
