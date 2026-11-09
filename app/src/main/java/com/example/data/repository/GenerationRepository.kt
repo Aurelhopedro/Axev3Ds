@@ -30,12 +30,13 @@ import kotlin.math.max
  * Faz polling silencioso ao GitHub Actions e devolve os ficheiros gerados.
  * O UI recebe [GenerationStatus] com progresso real baseado no run + tempo estimado.
  * Inclui download nativo de artifacts via MediaStore (sem abrir browser).
+ *
+ * [pollIntervalMs] e [timeoutMs] são controláveis remotamente via FlagsRepository.
  */
 class GenerationRepository(private val context: Context) {
 
     private val tokenManager = AuthTokenManager(context)
 
-    // Cliente Retrofit — para polling e metadados (pode seguir redirects)
     private val api: GitHubApi by lazy {
         val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
         Retrofit.Builder()
@@ -46,55 +47,35 @@ class GenerationRepository(private val context: Context) {
     }
 
     // Cliente OkHttp dedicado ao download — NÃO segue redirects automaticamente.
-    // O GitHub devolve 302 → Location com URL temporário do blob storage (Azure/AWS).
-    // Esse URL de destino NÃO aceita o header Authorization; se o OkHttp seguir o
-    // redirect com o header intacto, o pedido falha com 403.
-    // A solução: desativar followRedirects, extrair o Location e fazer um segundo
-    // pedido limpo (sem Authorization) para o blob storage.
     private val downloadClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .followRedirects(false)          // ← crítico
+            .followRedirects(false)
             .followSslRedirects(false)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.MINUTES) // artifacts podem ser grandes
+            .readTimeout(5, TimeUnit.MINUTES)
             .build()
     }
 
     // ── Modelo de estado ──────────────────────────────────────────────────────
 
     sealed class GenerationStatus {
-        /** Fase inicial — a aguardar o run aparecer no GitHub */
         data class Preparing(val message: String = "Preparing your character…") : GenerationStatus()
-
-        /**
-         * A processar — fase intermédia.
-         * @param message      Etapa atual (ex: "Building mesh structure…")
-         * @param progress     0.0–1.0
-         * @param elapsedSec   Segundos decorridos desde o dispatch
-         * @param estimatedSec Segundos restantes estimados
-         */
         data class Processing(
             val message: String,
             val progress: Float,
             val elapsedSec: Int = 0,
             val estimatedSec: Int = 900
         ) : GenerationStatus()
-
-        /** Concluído — lista de ficheiros prontos a descarregar */
         data class Ready(val files: List<GeneratedFile>) : GenerationStatus()
-
-        /** Erro — mensagem amigável */
         data class Failed(val message: String) : GenerationStatus()
     }
 
-    /** Estado do download de um ficheiro individual */
     sealed class DownloadStatus {
         object Downloading : DownloadStatus()
         data class Done(val fileName: String) : DownloadStatus()
         data class Failed(val message: String) : DownloadStatus()
     }
 
-    // Mapeamento de etapas do run → mensagem + progresso aproximado
     private val progressMessages = listOf(
         0.05f to "Preparing your character…",
         0.15f to "Setting up environment…",
@@ -107,7 +88,6 @@ class GenerationRepository(private val context: Context) {
         0.97f to "Finalising…"
     )
 
-    // Duração típica por qualidade (segundos)
     private val estimatedDurationByQuality = mapOf(
         "low"    to 480,
         "medium" to 720,
@@ -116,11 +96,17 @@ class GenerationRepository(private val context: Context) {
 
     // ── Polling ───────────────────────────────────────────────────────────────
 
+    /**
+     * @param pollIntervalMs  Intervalo de polling em ms — controlável via flags (default 8s)
+     * @param timeoutMs       Timeout total em ms — controlável via flags (default 55min)
+     */
     fun pollUntilReady(
         repoFullName: String,
         characterId: String,
         dispatchedAt: Long = System.currentTimeMillis(),
-        quality: String = "high"
+        quality: String = "high",
+        pollIntervalMs: Long = 8_000L,
+        timeoutMs: Long = 55 * 60 * 1000L
     ): Flow<GenerationStatus> = flow {
 
         val bearer = tokenManager.getBearerToken()
@@ -135,24 +121,19 @@ class GenerationRepository(private val context: Context) {
         emit(GenerationStatus.Preparing())
 
         val estimatedTotal = estimatedDurationByQuality[quality] ?: 900
-        val pollInterval   = 8_000L
-        val timeout        = 55 * 60 * 1000L
         var elapsedMs      = 0L
         var runStartedAt: Long? = null
 
-        while (elapsedMs < timeout) {
+        while (elapsedMs < timeoutMs) {
 
-            delay(pollInterval)
-            elapsedMs += pollInterval
+            delay(pollIntervalMs)
+            elapsedMs += pollIntervalMs
 
             val elapsedSec = (elapsedMs / 1000).toInt()
-
             val approxProgress = (elapsedSec.toFloat() / estimatedTotal.toFloat())
                 .coerceIn(0.05f, 0.95f)
-
             val msgPair = progressMessages.lastOrNull { it.first <= approxProgress }
                 ?: progressMessages.first()
-
             val remainingSec = max(0, estimatedTotal - elapsedSec)
 
             emit(GenerationStatus.Processing(
@@ -222,15 +203,6 @@ class GenerationRepository(private val context: Context) {
 
     // ── Download nativo de artifact ───────────────────────────────────────────
 
-    /**
-     * Descarrega um artifact do GitHub Actions diretamente para a pasta Downloads
-     * do dispositivo, sem abrir o browser.
-     *
-     * Fluxo:
-     * 1. GET /artifacts/{id}/zip com Authorization → 302 com Location (URL temporário, 1 min)
-     * 2. GET Location SEM Authorization → stream do ZIP
-     * 3. Gravar no MediaStore.Downloads com IS_PENDING para operação atómica
-     */
     suspend fun downloadArtifact(
         file: GeneratedFile,
         repoFullName: String
@@ -244,7 +216,6 @@ class GenerationRepository(private val context: Context) {
         val (owner, repo) = parts
 
         try {
-            // ── Passo 1: Obter o URL temporário via 302 ───────────────────────
             val redirectReq = Request.Builder()
                 .url("https://api.github.com/repos/$owner/$repo/actions/artifacts/${file.artifactId}/zip")
                 .addHeader("Authorization", bearer)
@@ -265,11 +236,8 @@ class GenerationRepository(private val context: Context) {
 
             redirectResp.close()
 
-            // ── Passo 2: Descarregar do blob storage SEM Authorization ────────
             val downloadReq = Request.Builder()
                 .url(locationUrl)
-                // Sem Authorization — o URL do blob storage já tem credenciais
-                // temporárias embutidas; enviar o token causa erro 403
                 .build()
 
             val downloadResp = downloadClient.newCall(downloadReq).execute()
@@ -283,15 +251,13 @@ class GenerationRepository(private val context: Context) {
             val body = downloadResp.body
                 ?: return@withContext DownloadStatus.Failed("Empty response")
 
-            // ── Passo 3: Gravar no MediaStore.Downloads ───────────────────────
-            // Android 10+ não precisa de WRITE_EXTERNAL_STORAGE
             val fileName = "${file.name.substringBeforeLast(".")}.zip"
 
             val contentValues = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/zip")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Downloads.IS_PENDING, 1) // reserva o ficheiro
+                    put(MediaStore.Downloads.IS_PENDING, 1)
                 }
             }
 
@@ -311,7 +277,6 @@ class GenerationRepository(private val context: Context) {
 
             downloadResp.close()
 
-            // Marcar como completo — torna o ficheiro visível no gestor de ficheiros
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
                 contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
