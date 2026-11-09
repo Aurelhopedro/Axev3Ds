@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.Base64
 
 private const val TAG = "AXEV/Repo"
 
@@ -32,15 +33,9 @@ sealed class RepoCreationResult {
     data class Error(val message: String) : RepoCreationResult()
 }
 
-/**
- * Resultado do update de workflows num repositório já existente.
- */
 sealed class WorkflowUpdateResult {
-    /** Ambos os workflows actualizados com sucesso. */
     object Success : WorkflowUpdateResult()
-    /** Falha parcial ou total. [details] lista o estado de cada workflow. */
     data class PartialFailure(val details: List<String>) : WorkflowUpdateResult()
-    /** Erro antes de começar (sem token, sem repo, etc.). */
     data class Error(val message: String) : WorkflowUpdateResult()
 }
 
@@ -48,9 +43,6 @@ class GitHubRepository(private val context: Context) {
 
     val tokenManager = AuthTokenManager(context)
 
-    // FIX: authTokenManager shares the SAME EncryptedSharedPreferences file
-    // ("axev_secure_prefs") as tokenManager.  Both now read from the same store,
-    // so a token saved by GitHubAuthRepository (Web Flow) is visible here.
     private val authTokenManager = AuthTokenManager(context)
 
     private val moshi = Moshi.Builder()
@@ -74,15 +66,6 @@ class GitHubRepository(private val context: Context) {
 
     // ── Token resolution (unified) ────────────────────────────────────────────
 
-    /**
-     * Returns the best available bearer token, checking both token managers.
-     * This fixes the race where Web Flow saves via GitHubAuthRepository but
-     * generateCharacter() reads from GitHubRepository's own tokenManager.
-     *
-     * Both managers share the same EncryptedSharedPreferences file so this is
-     * effectively a double-check with the same backing store, but it also makes
-     * the intent explicit and future-proof.
-     */
     fun resolveToken(): String? =
         tokenManager.getBearerToken() ?: authTokenManager.getBearerToken()
 
@@ -195,13 +178,6 @@ class GitHubRepository(private val context: Context) {
         }
     }
 
-    /**
-     * Injicta os workflows num repositório recém-criado.
-     * Tenta até 3 vezes com 5s de espera entre tentativas,
-     * para dar tempo ao GitHub de inicializar o branch main.
-     *
-     * Para repositórios já existentes usa [updateWorkflows] em vez deste método.
-     */
     suspend fun setupWorkspace(owner: String, repoName: String): Boolean {
         val bearer = resolveToken() ?: run {
             Log.e(TAG, "setupWorkspace: no token")
@@ -260,12 +236,6 @@ class GitHubRepository(private val context: Context) {
         return false
     }
 
-    /**
-     * Actualiza os workflows num repositório já existente.
-     *
-     * Faz GET de cada workflow para obter o SHA actual e depois PUT com o novo conteúdo.
-     * Se o ficheiro não existir ainda, cria-o.
-     */
     suspend fun updateWorkflows(repoFullName: String): WorkflowUpdateResult {
         val bearer = resolveToken() ?: run {
             Log.e(TAG, "updateWorkflows: no token saved")
@@ -293,42 +263,17 @@ class GitHubRepository(private val context: Context) {
         for ((fileName, newContent) in workflows) {
             val path = ".github/workflows/$fileName"
 
-            // ── 1. GET SHA ────────────────────────────────────────────────────
-            Log.d(TAG, "updateWorkflows[$fileName]: GET sha from $path")
             val existingSha: String? = try {
                 val r = api.getFileContent(bearer, owner, repo, path)
                 when (r.code()) {
-                    200  -> {
-                        val sha = r.body()?.sha
-                        if (sha == null) {
-                            Log.w(TAG, "updateWorkflows[$fileName]: GET 200 but sha=null, will create")
-                        } else {
-                            Log.d(TAG, "updateWorkflows[$fileName]: existing sha=$sha")
-                        }
-                        sha
-                    }
-                    404  -> {
-                        Log.i(TAG, "updateWorkflows[$fileName]: not found (404) — will create")
-                        null
-                    }
-                    401  -> {
-                        val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: GET 401 — $err")
-                        details.add("❌ $fileName: token inválido (GET 401)")
-                        anyFailed = true
-                        continue
-                    }
-                    403  -> {
-                        val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: GET 403 — $err")
-                        details.add("❌ $fileName: sem permissão (GET 403) — $err")
-                        anyFailed = true
-                        continue
-                    }
+                    200  -> r.body()?.sha
+                    404  -> null
                     else -> {
                         val err = r.errorBody()?.string() ?: ""
-                        Log.w(TAG, "updateWorkflows[$fileName]: GET ${r.code()} — $err — proceeding without SHA")
-                        null
+                        Log.e(TAG, "updateWorkflows[$fileName]: GET ${r.code()} — $err")
+                        details.add("❌ $fileName: erro ao verificar (${r.code()})")
+                        anyFailed = true
+                        continue
                     }
                 }
             } catch (e: Exception) {
@@ -338,14 +283,12 @@ class GitHubRepository(private val context: Context) {
                 continue
             }
 
-            // ── 2. PUT (create or update) ─────────────────────────────────────
             val action    = if (existingSha != null) "update" else "create"
             val commitMsg = if (existingSha != null)
                 "ci: update $fileName to latest AXEV version"
             else
                 "ci: add $fileName"
 
-            Log.d(TAG, "updateWorkflows[$fileName]: PUT ($action)")
             try {
                 val r = api.createFile(
                     token   = bearer,
@@ -361,34 +304,15 @@ class GitHubRepository(private val context: Context) {
                 )
                 when (r.code()) {
                     200, 201 -> {
-                        val newSha = r.body()?.content?.sha ?: "unknown"
-                        Log.i(TAG, "updateWorkflows[$fileName]: ✅ $action OK — new sha=$newSha")
+                        Log.i(TAG, "updateWorkflows[$fileName]: ✅ $action OK")
                         details.add("✅ $fileName: ${if (existingSha != null) "actualizado" else "criado"}")
                     }
-                    401  -> {
-                        val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: PUT 401 — $err")
-                        details.add("❌ $fileName: token inválido ao $action (PUT 401)")
-                        anyFailed = true
-                    }
-                    403  -> {
-                        val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: PUT 403 — $err")
-                        details.add("❌ $fileName: sem permissão ao $action (PUT 403) — $err")
-                        anyFailed = true
-                    }
-                    409  -> {
-                        val err = r.errorBody()?.string() ?: ""
-                        Log.e(TAG, "updateWorkflows[$fileName]: PUT 409 Conflict (SHA stale) — $err")
-                        details.add("❌ $fileName: conflito de SHA (PUT 409) — tenta novamente")
-                        anyFailed = true
-                    }
-                    422  -> {
-                        val err = r.errorBody()?.string() ?: ""
+                    422 -> {
                         if (existingSha == null) {
                             Log.w(TAG, "updateWorkflows[$fileName]: PUT 422 on create (file existed) — OK")
                             details.add("✅ $fileName: já existia (sem alterações)")
                         } else {
+                            val err = r.errorBody()?.string() ?: ""
                             Log.e(TAG, "updateWorkflows[$fileName]: PUT 422 — $err")
                             details.add("❌ $fileName: validação falhou (PUT 422) — $err")
                             anyFailed = true
@@ -408,9 +332,62 @@ class GitHubRepository(private val context: Context) {
             }
         }
 
-        Log.i(TAG, "updateWorkflows: done. details=$details anyFailed=$anyFailed")
         return if (anyFailed) WorkflowUpdateResult.PartialFailure(details)
                else           WorkflowUpdateResult.Success
+    }
+
+    /**
+     * Injeta um conteúdo YAML remoto num workflow específico do repositório do utilizador.
+     * Chamado pelo MainViewModel quando o RemoteConfigRepository encontra uma versão mais recente.
+     * Falha silenciosamente — o dispatch continua mesmo que a actualização falhe.
+     */
+    suspend fun updateWorkflowContent(
+        repoFullName: String,
+        workflowFilename: String,
+        yamlContent: String
+    ) {
+        val bearer = resolveToken() ?: run {
+            Log.e(TAG, "updateWorkflowContent: no token")
+            return
+        }
+        val parts = repoFullName.split("/")
+        if (parts.size != 2) return
+        val owner = parts[0]
+        val repo  = parts[1]
+        val path  = ".github/workflows/$workflowFilename"
+
+        try {
+            // Obter SHA actual (se existir)
+            val existingSha: String? = try {
+                val r = api.getFileContent(bearer, owner, repo, path)
+                if (r.code() == 200) r.body()?.sha else null
+            } catch (e: Exception) { null }
+
+            val encodedContent = Base64.getEncoder().encodeToString(
+                yamlContent.toByteArray(Charsets.UTF_8)
+            )
+
+            val r = api.createFile(
+                token   = bearer,
+                owner   = owner,
+                repo    = repo,
+                path    = path,
+                request = CreateFileRequest(
+                    message = "ci: update $workflowFilename from axev-config remote",
+                    content = encodedContent,
+                    sha     = existingSha,
+                    branch  = "main"
+                )
+            )
+            if (r.isSuccessful) {
+                Log.i(TAG, "updateWorkflowContent: ✅ $workflowFilename updated from remote config")
+            } else {
+                val err = r.errorBody()?.string() ?: ""
+                Log.w(TAG, "updateWorkflowContent: HTTP ${r.code()} — $err (non-fatal, dispatch continues)")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "updateWorkflowContent: exception — ${e.message} (non-fatal, dispatch continues)", e)
+        }
     }
 
     suspend fun generateCharacter(
@@ -426,8 +403,6 @@ class GitHubRepository(private val context: Context) {
         val owner = parts[0]
         val repo  = parts[1]
 
-        // FIX: always use resolveToken() — the caller may pass a stale value
-        // from a StateFlow that was set before the Web Flow auth completed.
         val bearer = resolveToken() ?: run {
             Log.e(TAG, "generateCharacter: no token available after resolution")
             return false
@@ -453,9 +428,8 @@ class GitHubRepository(private val context: Context) {
             "config_json"     to ""
         )
 
-        Log.d(TAG, "generateCharacter: dispatching workflow '${WorkflowTemplates.WORKFLOW_GENERATE}'")
+        Log.d(TAG, "generateCharacter: dispatching '${WorkflowTemplates.WORKFLOW_GENERATE}'")
         Log.d(TAG, "generateCharacter: repo=$repoFullName  character_id=${config.id}")
-        Log.d(TAG, "generateCharacter: inputs=$inputs")
 
         val request = WorkflowDispatchWithInputs(ref = "main", inputs = inputs)
         return try {
@@ -465,18 +439,14 @@ class GitHubRepository(private val context: Context) {
                 request
             )
             if (response.isSuccessful) {
-                // GitHub returns 204 No Content on success
                 Log.i(TAG, "generateCharacter: dispatch OK (HTTP ${response.code()})")
                 true
             } else {
-                // FIX: log the full error body so we can see the exact reason
                 val errBody = response.errorBody()?.string() ?: "(sem body)"
                 Log.e(TAG, "generateCharacter: dispatch FAILED")
                 Log.e(TAG, "  → HTTP ${response.code()}")
                 Log.e(TAG, "  → body: $errBody")
                 Log.e(TAG, "  → token starts with: ${bearer.take(20)}…")
-                Log.e(TAG, "  → workflow: ${WorkflowTemplates.WORKFLOW_GENERATE}")
-                Log.e(TAG, "  → repo: $owner/$repo")
                 false
             }
         } catch (e: Exception) {
@@ -491,10 +461,7 @@ class GitHubRepository(private val context: Context) {
             return false
         }
         val parts  = repoFullName.split("/")
-        if (parts.size != 2) {
-            Log.e(TAG, "runSmokeTest: invalid repoFullName='$repoFullName'")
-            return false
-        }
+        if (parts.size != 2) return false
         return try {
             val response = api.dispatchWorkflow(
                 token      = bearer,
