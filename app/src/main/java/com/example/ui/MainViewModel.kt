@@ -11,6 +11,8 @@ import com.example.data.api.WorkflowRun
 import com.example.data.auth.AuthResult
 import com.example.data.auth.GitHubAuthRepository
 import com.example.data.models.CharacterConfig
+import com.example.data.repository.FlagsRepository
+import com.example.data.repository.FlagsRepository.AppFlags
 import com.example.data.repository.GenerationRepository
 import com.example.data.repository.GenerationRepository.DownloadStatus
 import com.example.data.repository.GenerationRepository.GenerationStatus
@@ -94,6 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val optionsRepository = WorkflowOptionsRepository(application)
     private val generationRepo    = GenerationRepository(application)
     private val remoteConfig      = RemoteConfigRepository(application)
+    private val flagsRepository   = FlagsRepository(application)
 
     val token: StateFlow<String?> = repository.tokenFlow
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -140,6 +143,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _downloadStates = MutableStateFlow<Map<Long, DownloadStatus>>(emptyMap())
     val downloadStates: StateFlow<Map<Long, DownloadStatus>> = _downloadStates.asStateFlow()
 
+    // ── Feature flags ─────────────────────────────────────────────────────────
+    private val _flags = MutableStateFlow(AppFlags())
+    val flags: StateFlow<AppFlags> = _flags.asStateFlow()
+
     private var lastDispatchedAt: Long = 0L
     private var pollingJob:    Job? = null
     private var generationJob: Job? = null
@@ -149,8 +156,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _authState.value = AuthState.Authenticated
             viewModelScope.launch {
                 refreshUserData()
+                loadFlags()
                 loadWorkflowOptions()
             }
+        } else {
+            // Carregar flags mesmo sem autenticação (manutenção, versão mínima, etc.)
+            viewModelScope.launch { loadFlags() }
+        }
+    }
+
+    // ── Feature Flags ─────────────────────────────────────────────────────────
+
+    fun loadFlags() {
+        viewModelScope.launch {
+            val f = flagsRepository.load()
+            _flags.value = f
+            Log.i(TAG, "loadFlags: live=${f.isLive} maintenance=${f.maintenanceMode} download=${f.downloadEnabled}")
         }
     }
 
@@ -181,6 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     repository.saveToken(result.accessToken)
                     _authState.value = AuthState.Authenticated
                     refreshUserData()
+                    loadFlags()
                     loadWorkflowOptions()
                 }
             }
@@ -204,6 +226,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sanitizedToken = newToken.trim()
         viewModelScope.launch {
             _uiState.value = UiState.Loading
+
+            // Verificar flag demo_mode_enabled
+            if (sanitizedToken == "123456789" && !_flags.value.demoModeEnabled) {
+                _uiState.value = UiState.Error("Demo mode is not available")
+                return@launch
+            }
+
             if (sanitizedToken == "123456789") {
                 repository.saveToken(sanitizedToken)
                 _user.value  = GitHubUser("axev_dev", "https://github.com/identicons/axev.png", "AXEV Developer")
@@ -217,6 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.saveToken(sanitizedToken)
                 _authState.value = AuthState.Authenticated
                 _uiState.value   = UiState.Success("Logged in as ${user.login}")
+                loadFlags()
                 loadWorkflowOptions()
             } else {
                 _uiState.value = UiState.Error("Invalid Token")
@@ -369,6 +399,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _repos.value               = emptyList()
             _workflowRuns.value        = emptyList()
             _workflowOptions.value     = DynamicWorkflowOptions()
+            _flags.value               = AppFlags()
             _authState.value           = AuthState.Idle
             _uiState.value             = UiState.Idle
             _repoCreationState.value   = RepoCreationState.Idle
@@ -386,9 +417,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (t == "123456789") {
                 _workflowRuns.value = listOf(
                     WorkflowRun(1001, "ARA 3D GEN - SOLDIER-01", "completed", "success",
-                        "2026-11-07T10:00:00Z", "2026-11-07T10:05:00Z", ""),
+                        "2026-11-09T10:00:00Z", "2026-11-09T10:05:00Z", ""),
                     WorkflowRun(1002, "ARA 3D GEN - DETECTIVE-X", "in_progress", null,
-                        "2026-11-07T11:00:00Z", "2026-11-07T11:01:00Z", "")
+                        "2026-11-09T11:00:00Z", "2026-11-09T11:01:00Z", "")
                 )
                 return@launch
             }
@@ -416,6 +447,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // Verificar flag de manutenção
+        val currentFlags = _flags.value
+        if (currentFlags.maintenanceMode) {
+            val msg = currentFlags.maintenanceMessage.ifBlank { "The service is under maintenance. Please try again later." }
+            _generationStatus.value = GenerationStatus.Failed(msg)
+            return
+        }
+
         generationJob?.cancel()
         _generationStatus.value = GenerationStatus.Preparing()
         _downloadStates.value = emptyMap()
@@ -435,18 +474,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Log.d(TAG, "generate: checking remote config for workflow updates")
             val remoteYaml = remoteConfig.fetchWorkflowIfNewer(
                 workflowFilename = WorkflowTemplates.WORKFLOW_GENERATE,
-                token            = null   // público — sem token necessário
+                token            = null
             )
             if (remoteYaml != null) {
                 Log.i(TAG, "generate: remote workflow is newer — updating in user repo before dispatch")
-                // Injeta o workflow remoto no repositório do utilizador
                 repository.updateWorkflowContent(r, WorkflowTemplates.WORKFLOW_GENERATE, remoteYaml)
             } else {
                 Log.d(TAG, "generate: local workflow is up to date — no update needed")
             }
             // ─────────────────────────────────────────────────────────────────
 
-            val success = repository.generateCharacter(t, r, config)
+            // Aplicar quality máxima da flag
+            val effectiveConfig = if (currentFlags.maxQuality != "high" && config.quality == "high") {
+                Log.w(TAG, "generate: quality capped to '${currentFlags.maxQuality}' by remote flag")
+                config.copy(quality = currentFlags.maxQuality)
+            } else config
+
+            val success = repository.generateCharacter(t, r, effectiveConfig)
             if (!success) {
                 _generationStatus.value = GenerationStatus.Failed(
                     "Failed to start generation. Check your GitHub token permissions (needs 'workflow' scope)."
@@ -460,8 +504,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchWorkflowRuns(t, r)
 
             val characterId = config.id
-            generationRepo.pollUntilReady(r, characterId, lastDispatchedAt, config.quality)
-                .collect { status -> _generationStatus.value = status }
+            // Usar timeout e poll interval das flags
+            generationRepo.pollUntilReady(
+                repoFullName  = r,
+                characterId   = characterId,
+                dispatchedAt  = lastDispatchedAt,
+                quality       = effectiveConfig.quality,
+                pollIntervalMs = currentFlags.pollIntervalSeconds * 1000L,
+                timeoutMs      = currentFlags.generationTimeoutMinutes * 60 * 1000L
+            ).collect { status -> _generationStatus.value = status }
         }
     }
 
@@ -475,6 +526,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Download de artifact ──────────────────────────────────────────────────
 
     fun downloadFile(file: GeneratedFile) {
+        // Verificar flag de download
+        if (!_flags.value.downloadEnabled) {
+            viewModelScope.launch {
+                _downloadStates.value = _downloadStates.value +
+                    (file.artifactId to DownloadStatus.Failed("Downloads are temporarily unavailable"))
+            }
+            return
+        }
+
         val repo = selectedRepo.value ?: return
 
         if (token.value == "123456789") {
@@ -520,6 +580,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Smoke Test ────────────────────────────────────────────────────────────
 
     fun runSmokeTest() {
+        // Verificar flag smoke_test_enabled
+        if (!_flags.value.smokeTestEnabled) {
+            _smokeTestState.value = SmokeTestState.Failed("Smoke test is currently disabled")
+            return
+        }
+
         val r = selectedRepo.value ?: run {
             _smokeTestState.value = SmokeTestState.Failed("No repository selected")
             return
