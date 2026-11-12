@@ -380,13 +380,14 @@ jobs:
           FINISH=$(python3 -c "import json; d=json.load(open('../axev-build/vehicle_params.json')); print(d['vehicle_style'].get('finish','gloss'))")
 
           # Montar script de export com vehicle
+          # NOTA: o script corre dentro de ara-3d-gen/, por isso os imports são relativos a esse directório
           cat > export-vehicle.ts << 'TSEOF'
           import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
-          import { buildHuman } from '../src/core/human';
-          import { triangleCount } from '../src/core/mesh';
-          import { DEFAULT_PARAMS, PRESETS, type HumanParams } from '../src/core/params';
-          import { exportCharacter, type ExportFormat } from '../src/export';
+          import { buildHuman } from './src/core/human';
+          import { triangleCount } from './src/core/mesh';
+          import { DEFAULT_PARAMS, PRESETS, type HumanParams } from './src/core/params';
+          import { exportCharacter, type ExportFormat } from './src/export';
           import { nodeLibrary } from './node-assets';
 
           const vparams = JSON.parse(readFileSync('../axev-build/vehicle_params.json', 'utf8'));
