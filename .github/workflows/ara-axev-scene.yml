@@ -1,0 +1,830 @@
+name: AXEV 3D — Gerar Cenário
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      # 1
+      scene_id:
+        description: "ID do cenário"
+        required: true
+        type: string
+        default: "scene_001"
+
+      # 2
+      scene_name:
+        description: "Nome do cenário"
+        required: true
+        type: string
+        default: "AXEV Scene"
+
+      # 3
+      location:
+        description: "Localização / set"
+        required: true
+        type: choice
+        default: "neon_street"
+        options:
+          - "neon_street"
+          - "neon_alley"
+          - "daylight_alley"
+          - "highway"
+          - "military_base"
+          - "prison_cell"
+          - "prison_yard"
+          - "police_room"
+          - "hospital_room"
+          - "rooftop"
+          - "forest_trail"
+          - "beach"
+          - "harbour"
+          - "nightclub"
+          - "street_cafe"
+          - "boardroom"
+          - "open_plan_office"
+          - "warehouse"
+          - "church"
+          - "football_stadium"
+
+      # 4
+      scene_duration:
+        description: "Duração total (segundos, máx 60)"
+        required: true
+        type: choice
+        default: "15"
+        options:
+          - "5"
+          - "10"
+          - "15"
+          - "20"
+          - "30"
+          - "45"
+          - "60"
+
+      # 5 ── PERSONAGEM 1 (obrigatório)
+      char1_preset:
+        description: "Personagem 1 — Preset"
+        required: true
+        type: choice
+        default: "The Soldier"
+        options:
+          - "Athletic man"
+          - "Athletic woman"
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Secret Agent"
+          - "The Professional Hitman"
+          - "The Bodyguard"
+          - "Detective"
+          - "The Corporate High-Flier"
+          - "The Female Executive"
+          - "The Adventurer"
+          - "The Cyberpunk Hacker"
+          - "The Wasteland Survivor"
+          - "The Priest"
+          - "The Covert Spy"
+
+      # 6
+      char1_gender_age:
+        description: "Personagem 1 — Género:Idade"
+        required: true
+        type: choice
+        default: "male:25"
+        options:
+          - "male:18"
+          - "male:25"
+          - "male:30"
+          - "male:40"
+          - "male:50"
+          - "female:18"
+          - "female:25"
+          - "female:30"
+          - "female:40"
+
+      # 7
+      char1_action:
+        description: "Personagem 1 — Acção principal"
+        required: true
+        type: choice
+        default: "idle"
+        options:
+          - "idle"
+          - "walk"
+          - "run"
+          - "talk"
+          - "punch_combo"
+          - "front_kick"
+          - "fighting_stance"
+          - "sword_combo"
+          - "rifle_fire"
+          - "pistol_fire"
+          - "take_cover"
+          - "cover_fire"
+          - "shot_chest"
+          - "rifle_death_forward"
+          - "wave"
+          - "phone_call"
+          - "looking_around"
+          - "drive_car"
+          - "drive_motorcycle"
+          - "ride_horse"
+          - "fly_helicopter"
+
+      # 8
+      char1_weapon:
+        description: "Personagem 1 — Arma"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "pistol"
+          - "rifle"
+          - "sword"
+          - "knife"
+
+      # 9
+      char1_position:
+        description: "Personagem 1 — Posição (x:z:yaw)"
+        required: true
+        type: choice
+        default: "0:0:0"
+        options:
+          - "0:0:0"
+          - "-2:0:0"
+          - "2:0:0"
+          - "0:2:180"
+          - "-2:2:30"
+          - "2:2:330"
+          - "0:4:180"
+          - "-4:0:90"
+          - "4:0:270"
+
+      # 10 ── PERSONAGEM 2 (opcional)
+      char2_preset:
+        description: "Personagem 2 — Preset (none = sem P2)"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "Athletic man"
+          - "Athletic woman"
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Secret Agent"
+          - "The Professional Hitman"
+          - "The Bodyguard"
+          - "Detective"
+          - "The Corporate High-Flier"
+          - "The Female Executive"
+          - "The Adventurer"
+          - "The Cyberpunk Hacker"
+          - "The Wasteland Survivor"
+          - "The Priest"
+
+      # 11
+      char2_gender_age:
+        description: "Personagem 2 — Género:Idade"
+        required: true
+        type: choice
+        default: "male:30"
+        options:
+          - "male:18"
+          - "male:25"
+          - "male:30"
+          - "male:40"
+          - "male:50"
+          - "female:18"
+          - "female:25"
+          - "female:30"
+          - "female:40"
+
+      # 12
+      char2_action:
+        description: "Personagem 2 — Acção principal"
+        required: true
+        type: choice
+        default: "idle"
+        options:
+          - "idle"
+          - "walk"
+          - "run"
+          - "talk"
+          - "punch_combo"
+          - "front_kick"
+          - "fighting_stance"
+          - "sword_combo"
+          - "rifle_fire"
+          - "pistol_fire"
+          - "take_cover"
+          - "cover_fire"
+          - "shot_chest"
+          - "rifle_death_forward"
+          - "wave"
+          - "phone_call"
+          - "looking_around"
+
+      # 13
+      char2_weapon:
+        description: "Personagem 2 — Arma"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "pistol"
+          - "rifle"
+          - "sword"
+          - "knife"
+
+      # 14
+      char2_position:
+        description: "Personagem 2 — Posição (x:z:yaw)"
+        required: true
+        type: choice
+        default: "2:0:180"
+        options:
+          - "0:0:0"
+          - "-2:0:180"
+          - "2:0:180"
+          - "0:2:180"
+          - "-2:2:30"
+          - "2:2:330"
+          - "0:4:0"
+          - "-4:0:270"
+          - "4:0:90"
+
+      # 15 ── CÂMARA
+      camera_framing:
+        description: "Enquadramento da câmara"
+        required: true
+        type: choice
+        default: "full_body"
+        options:
+          - "full_body"
+          - "medium"
+          - "close_up"
+          - "wide_establishing"
+
+      camera_angle:
+        description: "Ângulo da câmara (graus)"
+        required: true
+        type: choice
+        default: "0"
+        options:
+          - "0"
+          - "45"
+          - "90"
+          - "135"
+          - "180"
+          - "225"
+          - "270"
+          - "315"
+
+      camera_elevation:
+        description: "Elevação da câmara"
+        required: true
+        type: choice
+        default: "eye_level"
+        options:
+          - "low_angle"
+          - "eye_level"
+          - "high_angle"
+          - "bird_eye"
+
+      # 16 ── MÚSICA
+      music:
+        description: "Música de fundo"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - "none"
+          - "dramatic_adventure"
+          - "spy_opening"
+          - "spy_mission"
+          - "urban_hip_hop"
+          - "horror"
+          - "afrobeat"
+          - "jazz_restaurant"
+          - "tropical_pop"
+          - "old_school_salsa"
+
+      # 17 ── EXPORT
+      export_format:
+        description: "Formato de export do cenário"
+        required: true
+        type: choice
+        default: "json"
+        options:
+          - "json"
+          - "json_and_catalog"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axev-scene-${{ github.ref }}-${{ inputs.scene_id }}
+  cancel-in-progress: false
+
+jobs:
+  generate-scene:
+    name: "Gerar cenário"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ─── 1. VALIDAÇÃO ────────────────────────────────────────────────────
+      - name: Validar inputs
+        env:
+          INPUT_SCENE_ID:  ${{ inputs.scene_id }}
+          INPUT_DURATION:  ${{ inputs.scene_duration }}
+        run: |
+          set -euo pipefail
+
+          if ! echo "$INPUT_SCENE_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
+            echo "::error::scene_id inválido: '$INPUT_SCENE_ID'"
+            exit 1
+          fi
+
+          if [ "$INPUT_DURATION" -gt 60 ] 2>/dev/null; then
+            echo "::error::Duração máxima é 60 segundos."
+            exit 1
+          fi
+
+          echo "✅ Inputs validados."
+
+      # ─── 2. CHECKOUT ─────────────────────────────────────────────────────
+      - name: Checkout AXEV
+        uses: actions/checkout@v4
+
+      # ─── 3. CONSTRUIR JSON DO CENÁRIO ────────────────────────────────────
+      - name: Construir JSON do cenário (Ara Studio format)
+        env:
+          SCENE_ID:        ${{ inputs.scene_id }}
+          SCENE_NAME:      ${{ inputs.scene_name }}
+          LOCATION:        ${{ inputs.location }}
+          DURATION:        ${{ inputs.scene_duration }}
+          CHAR1_PRESET:    ${{ inputs.char1_preset }}
+          CHAR1_GENDER_AGE: ${{ inputs.char1_gender_age }}
+          CHAR1_ACTION:    ${{ inputs.char1_action }}
+          CHAR1_WEAPON:    ${{ inputs.char1_weapon }}
+          CHAR1_POSITION:  ${{ inputs.char1_position }}
+          CHAR2_PRESET:    ${{ inputs.char2_preset }}
+          CHAR2_GENDER_AGE: ${{ inputs.char2_gender_age }}
+          CHAR2_ACTION:    ${{ inputs.char2_action }}
+          CHAR2_WEAPON:    ${{ inputs.char2_weapon }}
+          CHAR2_POSITION:  ${{ inputs.char2_position }}
+          CAMERA_FRAMING:  ${{ inputs.camera_framing }}
+          CAMERA_ANGLE:    ${{ inputs.camera_angle }}
+          CAMERA_ELEVATION: ${{ inputs.camera_elevation }}
+          MUSIC:           ${{ inputs.music }}
+          RUN_NUMBER:      ${{ github.run_number }}
+          REPO:            ${{ github.repository }}
+        run: |
+          mkdir -p axev-build axev-output
+
+          python3 << 'PYEOF'
+          import json, os
+          from pathlib import Path
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          scene_id    = env("SCENE_ID")
+          scene_name  = env("SCENE_NAME")
+          location    = env("LOCATION")
+          duration    = int(env("DURATION", "15"))
+          music       = env("MUSIC", "none")
+          run_number  = env("RUN_NUMBER")
+          repo        = env("REPO")
+
+          # ── Câmara ───────────────────────────────────────────────────────
+          FRAMING_MAP = {
+            "full_body": "full", "medium": "medium",
+            "close_up": "close", "wide_establishing": "full"
+          }
+          ELEVATION_MAP = {
+            "low_angle": -15, "eye_level": 0,
+            "high_angle": 20, "bird_eye": 45
+          }
+          framing   = FRAMING_MAP.get(env("CAMERA_FRAMING"), "full")
+          angle     = int(env("CAMERA_ANGLE", "0"))
+          elevation = ELEVATION_MAP.get(env("CAMERA_ELEVATION"), 0)
+
+          # ── Helper: parsear posição ───────────────────────────────────────
+          def parse_pos(s):
+            parts = s.split(":")
+            x   = float(parts[0]) if len(parts) > 0 else 0.0
+            z   = float(parts[1]) if len(parts) > 1 else 0.0
+            yaw = float(parts[2]) if len(parts) > 2 else 0.0
+            return x, z, yaw
+
+          # ── Helper: construir actor ───────────────────────────────────────
+          def build_actor(prefix, actor_id):
+            preset   = env(f"{prefix}_PRESET")
+            ga       = env(f"{prefix}_GENDER_AGE", "male:25").split(":")
+            action   = env(f"{prefix}_ACTION", "idle")
+            weapon   = env(f"{prefix}_WEAPON", "none")
+            pos_str  = env(f"{prefix}_POSITION", "0:0:0")
+            x, z, yaw = parse_pos(pos_str)
+
+            gender_val = 0.0 if ga[0] == "female" else 1.0
+            age_val    = int(ga[1]) if len(ga) > 1 else 25
+
+            # Duração por tipo de acção
+            LOOP_ACTIONS = {"idle","walk","run","talk","fighting_stance","cover_fire",
+                            "phone_call","looking_around","drive_car","drive_motorcycle",
+                            "ride_horse","fly_helicopter","take_cover"}
+            ONE_SHOT_ACTIONS = {"punch_combo","front_kick","sword_combo","rifle_fire",
+                                "pistol_fire","shot_chest","rifle_death_forward","wave"}
+            clip_duration = duration if action in LOOP_ACTIONS else min(3, duration)
+
+            actor = {
+              "id": actor_id,
+              "preset": preset,
+              "params": {
+                "gender": gender_val,
+                "ageYears": age_val,
+              },
+              "x": x, "y": 0, "z": z, "yaw": yaw,
+              "beats": [
+                {
+                  "clip": action,
+                  "duration": clip_duration,
+                  "move": action in {"walk","run"},
+                }
+              ]
+            }
+
+            if weapon != "none":
+              actor["weapon"] = weapon
+
+            return actor
+
+          # ── Construir cast ────────────────────────────────────────────────
+          cast = [build_actor("CHAR1", "char1")]
+          if env("CHAR2_PRESET") != "none":
+            cast.append(build_actor("CHAR2", "char2"))
+
+          # ── Câmara shots ──────────────────────────────────────────────────
+          camera_shots = [
+            {
+              "framing": framing,
+              "target": "all" if len(cast) > 1 else "char1",
+              "start": 0,
+              "duration": duration,
+              "angle": angle,
+              "elevation": elevation,
+            }
+          ]
+
+          # ── Música ────────────────────────────────────────────────────────
+          MUSIC_IDS = {
+            "dramatic_adventure": "dramatic-adventure-trailer",
+            "spy_opening":        "spy-opening-scene",
+            "spy_mission":        "spy-agent-mission-music",
+            "urban_hip_hop":      "urban-hip-hop-beat",
+            "horror":             "horror",
+            "afrobeat":           "afrobeat-instrumental",
+            "jazz_restaurant":    "jazz-restaurant-music",
+            "tropical_pop":       "tropical-relaxing-pop",
+            "old_school_salsa":   "old-school-salsa-02",
+          }
+          audio = {}
+          if music != "none" and music in MUSIC_IDS:
+            audio["music"] = {
+              "id": MUSIC_IDS[music],
+              "volume": 0.7,
+              "fadeIn": 1.0,
+              "fadeOut": 1.5,
+            }
+
+          # ── Montar JSON final (Ara Studio format) ─────────────────────────
+          scene_json = {
+            "kind": "ara-studio",
+            "version": 1,
+            "meta": {
+              "id": scene_id,
+              "name": scene_name,
+              "run": int(run_number) if run_number else 0,
+              "repo": repo,
+            },
+            "location": location,
+            "duration": duration,
+            "title": scene_name,
+            "showTitle": False,
+            "aspect": "landscape",
+            "camera": {
+              "angle": angle,
+              "elevation": elevation,
+              "distance": 1.0,
+              "movement": "locked",
+            },
+            "cast": cast,
+            "shots": camera_shots,
+            "audio": audio,
+          }
+
+          # Guardar JSON
+          out = Path("axev-build/scene.json")
+          out.write_text(json.dumps(scene_json, indent=2, ensure_ascii=False))
+          print(f"✅ JSON do cenário gerado: {out}")
+          print(f"   Localização: {location}")
+          print(f"   Cast: {len(cast)} personagem(ns)")
+          print(f"   Duração: {duration}s")
+          print(f"   Música: {music}")
+          PYEOF
+
+      # ─── 4. GERAR CATÁLOGO DO CENÁRIO ────────────────────────────────────
+      - name: Gerar catálogo do cenário
+        env:
+          SCENE_ID:        ${{ inputs.scene_id }}
+          SCENE_NAME:      ${{ inputs.scene_name }}
+          LOCATION:        ${{ inputs.location }}
+          DURATION:        ${{ inputs.scene_duration }}
+          CHAR1_PRESET:    ${{ inputs.char1_preset }}
+          CHAR1_GENDER_AGE: ${{ inputs.char1_gender_age }}
+          CHAR1_ACTION:    ${{ inputs.char1_action }}
+          CHAR1_WEAPON:    ${{ inputs.char1_weapon }}
+          CHAR1_POSITION:  ${{ inputs.char1_position }}
+          CHAR2_PRESET:    ${{ inputs.char2_preset }}
+          CHAR2_GENDER_AGE: ${{ inputs.char2_gender_age }}
+          CHAR2_ACTION:    ${{ inputs.char2_action }}
+          CHAR2_WEAPON:    ${{ inputs.char2_weapon }}
+          CHAR2_POSITION:  ${{ inputs.char2_position }}
+          CAMERA_FRAMING:  ${{ inputs.camera_framing }}
+          CAMERA_ANGLE:    ${{ inputs.camera_angle }}
+          CAMERA_ELEVATION: ${{ inputs.camera_elevation }}
+          MUSIC:           ${{ inputs.music }}
+          EXPORT_FORMAT:   ${{ inputs.export_format }}
+          RUN_NUMBER:      ${{ github.run_number }}
+          REPO:            ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, hashlib
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          scene_id     = env("SCENE_ID")
+          scene_name   = env("SCENE_NAME")
+          location     = env("LOCATION")
+          duration     = env("DURATION")
+          char1_preset = env("CHAR1_PRESET")
+          char1_ga     = env("CHAR1_GENDER_AGE")
+          char1_action = env("CHAR1_ACTION")
+          char1_weapon = env("CHAR1_WEAPON")
+          char1_pos    = env("CHAR1_POSITION")
+          char2_preset = env("CHAR2_PRESET")
+          char2_ga     = env("CHAR2_GENDER_AGE")
+          char2_action = env("CHAR2_ACTION")
+          char2_weapon = env("CHAR2_WEAPON")
+          char2_pos    = env("CHAR2_POSITION")
+          cam_framing  = env("CAMERA_FRAMING")
+          cam_angle    = env("CAMERA_ANGLE")
+          cam_elev     = env("CAMERA_ELEVATION")
+          music        = env("MUSIC")
+          export_fmt   = env("EXPORT_FORMAT")
+          run_number   = env("RUN_NUMBER")
+          repo         = env("REPO")
+          gen_date     = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+          # Hash do JSON
+          scene_path = Path("axev-build/scene.json")
+          scene_data = json.loads(scene_path.read_text())
+          scene_hash = hashlib.sha256(scene_path.read_bytes()).hexdigest()[:16] + "…"
+          cast_count = len(scene_data.get("cast", []))
+
+          # Descrição de localização
+          LOCATION_DESC = {
+            "neon_street":      "Rua neon urbana · exterior nocturno · 360m",
+            "neon_alley":       "Beco neon · exterior nocturno · espaço fechado",
+            "daylight_alley":   "Beco diurno · exterior · espaço fechado",
+            "highway":          "Auto-estrada · rota de condução longa",
+            "military_base":    "Base militar · interior + exterior",
+            "prison_cell":      "Cela de prisão · interior pequeno",
+            "prison_yard":      "Pátio de prisão · exterior murado",
+            "police_room":      "Sala de polícia · interior",
+            "hospital_room":    "Quarto de hospital · interior",
+            "rooftop":          "Terraço urbano · exterior · altura",
+            "forest_trail":     "Trilho de floresta · exterior · 360m",
+            "beach":            "Praia · exterior · água disponível",
+            "harbour":          "Porto · exterior · cais de embarque",
+            "nightclub":        "Nightclub · interior · pista de dança",
+            "street_cafe":      "Café de rua · exterior · mesas e cadeiras",
+            "boardroom":        "Sala de reuniões · interior · mesa central",
+            "open_plan_office": "Escritório open-plan · interior · secretárias",
+            "warehouse":        "Armazém · interior · espaço amplo",
+            "church":           "Igreja · interior · bancos e altar",
+            "football_stadium": "Estádio · 68×105m · relvado",
+          }
+          location_desc = LOCATION_DESC.get(location, location)
+
+          # Cast rows
+          cast_rows = f"""\
+          | char1 | {char1_preset} | {char1_ga} | {char1_action} | {char1_weapon} | {char1_pos} |"""
+          if char2_preset != "none":
+            cast_rows += f"""
+          | char2 | {char2_preset} | {char2_ga} | {char2_action} | {char2_weapon} | {char2_pos} |"""
+
+          md = f"""# AXEV Scene Catalog
+          <!-- Gerado automaticamente pelo pipeline ara-axev-scene.yml — NÃO editar manualmente -->
+
+          ## 1. IDENTIFICAÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | id | `{scene_id}` |
+          | nome | {scene_name} |
+          | pipeline_version | ara-axev-scene.yml · run #{run_number} |
+          | repo | {repo} |
+          | hash_json (SHA-256 parcial) | `{scene_hash}` |
+          | data_geracao | {gen_date} |
+          | motor | Ara 3D Studio (olatunde85/3d-gen) |
+          | formato_saida | Ara Studio JSON (ara-studio v1) |
+
+          ---
+
+          ## 2. LOCALIZAÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | set | {location} |
+          | descricao | {location_desc} |
+          | area_maxima | ±200m X/Z |
+          | colisores | advisory (sem collision response) |
+          | agua | {"disponível (beach/harbour/forest)" if location in ("beach","harbour","forest_trail") else "não disponível neste set"} |
+
+          > ⚠️ Verificar staging com **Check staging & location map** no Studio antes de exportar vídeo.
+
+          ---
+
+          ## 3. CAST
+
+          | ID | Preset | Género/Idade | Acção | Arma | Posição (x:z:yaw) |
+          |---|---|---|---|---|---|
+          {cast_rows}
+
+          - **Máximo suportado:** 5 personagens por cena
+          - **Cast nesta cena:** {cast_count} personagem(ns)
+
+          ---
+
+          ## 4. TIMELINE
+
+          | Campo | Valor |
+          |---|---|
+          | duracao_total | {duration}s |
+          | fps | 30 |
+          | limite_acoes_por_char | 16 |
+          | limite_camera_shots | 12 |
+          | limite_maximo | 60s |
+          | acoes_char1 | {char1_action} ({duration}s) |
+          | acoes_char2 | {char2_action if char2_preset != "none" else "N/A"} |
+
+          > ⚠️ Acções one-shot (punch, shot, death) têm duração máxima de 3s — verificar sincronização com reacções do outro personagem.
+
+          ---
+
+          ## 5. CÂMARA
+
+          | Campo | Valor |
+          |---|---|
+          | enquadramento | {cam_framing} |
+          | angulo | {cam_angle}° |
+          | elevacao | {cam_elev} |
+          | movimento | locked |
+          | alvo | {"all cast" if cast_count > 1 else "char1"} |
+          | aspect_ratio | landscape (16:9) |
+          | shots_definidos | 1 |
+
+          ---
+
+          ## 6. ÁUDIO
+
+          | Campo | Valor |
+          |---|---|
+          | musica | {music} |
+          | volume_musica | 0.7 |
+          | fade_in | 1.0s |
+          | fade_out | 1.5s |
+          | efeitos_sonoros | não definidos (adicionar no Studio) |
+          | dialogo | não definido (adicionar no Studio) |
+
+          > ⚠️ Lip-sync não suportado pelo Studio nesta versão.
+
+          ---
+
+          ## 7. METADADOS DE PRODUÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | location | {location} |
+          | duration | {duration}s |
+          | cast_count | {cast_count} |
+          | char1_preset | {char1_preset} |
+          | char1_action | {char1_action} |
+          | char2_preset | {char2_preset} |
+          | char2_action | {char2_action if char2_preset != "none" else "N/A"} |
+          | camera_framing | {cam_framing} |
+          | camera_angle | {cam_angle}° |
+          | music | {music} |
+          | export_format | {export_fmt} |
+          | config_file | ara-axev-scene.yml |
+
+          ### JSON completo (scene.json)
+          ```json
+          {json.dumps(scene_data, indent=2, ensure_ascii=False)}
+          ```
+
+          ---
+
+          ## 8. VALIDAÇÃO E QA
+
+          | Verificação | Como validar | Esperado |
+          |---|---|---|
+          | JSON válido | python3 -c "import json; json.load(open('scene.json'))" | sem erros |
+          | Duração ≤ 60s | campo `duration` | ≤ 60 |
+          | Cast ≤ 5 | len(cast) | ≤ 5 |
+          | Acções ≤ 16/char | len(beats) por actor | ≤ 16 |
+          | Staging | Check staging no Studio | sem conflitos terra/água |
+          | Posições | x/z dentro do set | ±200m máximo |
+          | Sincronização | hit reaction vs punch timing | 0.05s após disparo |
+
+          ---
+
+          ## MÍNIMO VIÁVEL PARA ABRIR NO STUDIO
+
+          - `kind: ara-studio` · `location` · `duration` · `cast` (≥1 actor com `beats`) · `shots` (≥1)
+
+          ## MÍNIMO PARA EXPORTAR VÍDEO
+
+          Todos os campos acima **mais**:
+          - Staging verificado (sem conflitos)
+          - Acções sincronizadas (hit/reaction no mesmo timestamp)
+          - Música/efeitos sonoros definidos
+          - Câmara com enquadramento adequado a cada beat
+
+          ---
+          *Pipeline: ara-axev-scene.yml · Run #{run_number} · {gen_date}*
+          """
+
+          out = Path("axev-output/AXEV_SCENE_CATALOG.md")
+          out.write_text(md, encoding="utf-8")
+          print(f"✅ Catálogo do cenário gerado: {out} ({out.stat().st_size} bytes)")
+          PYEOF
+
+      # ─── 5. COPIAR FICHEIROS PARA OUTPUT ─────────────────────────────────
+      - name: Preparar output
+        run: |
+          mkdir -p axev-output
+          cp axev-build/scene.json axev-output/AXEV_SCENE.json 2>/dev/null || true
+
+          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          cat > axev-output/AXEV_SCENE_REPORT.md << EOF
+          # AXEV 3D — Relatório do Cenário
+
+          ## Identificação
+          - **ID**: ${{ inputs.scene_id }}
+          - **Nome**: ${{ inputs.scene_name }}
+          - **Run**: #${{ github.run_number }} | **Repo**: ${{ github.repository }}
+          - **Data**: ${DATA}
+
+          ## Configuração
+          | Campo | Valor |
+          |-------|-------|
+          | Localização | ${{ inputs.location }} |
+          | Duração | ${{ inputs.scene_duration }}s |
+          | Personagem 1 | ${{ inputs.char1_preset }} · ${{ inputs.char1_action }} |
+          | Personagem 2 | ${{ inputs.char2_preset }} |
+          | Câmara | ${{ inputs.camera_framing }} · ${{ inputs.camera_angle }}° |
+          | Música | ${{ inputs.music }} |
+
+          ## Como usar
+          1. Abre **Ara Studio** em [ara3dgen.com/studio](https://ara3dgen.com/studio/)
+          2. Clica em **Assist → Open JSON**
+          3. Cola ou carrega o ficheiro **AXEV_SCENE.json**
+          4. Clica **Build film**
+          5. Ajusta staging, câmara e timing no Studio
+          6. Exporta MP4 (720p ou 1080p)
+
+          ## Ficheiros
+          - 🎬 [Cena JSON](./AXEV_SCENE.json) — abre directamente no Ara Studio
+          - 📄 [Catálogo do Cenário](./AXEV_SCENE_CATALOG.md)
+
+          ---
+          *Gerado por AXEV 3D Studio — ara-axev-scene.yml*
+          EOF
+
+      # ─── 6. PUBLICAR ARTEFACTO ───────────────────────────────────────────
+      - name: Publicar artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-SCENE-${{ inputs.scene_id }}
+          path: axev-output/
+          if-no-files-found: error
+          retention-days: 14
