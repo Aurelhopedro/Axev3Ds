@@ -1,45 +1,43 @@
 package com.example.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary           = TacticalOrange,
-    primaryContainer  = TacticalOrangeGlow,
-    onPrimary         = PremiumDark,
-    onPrimaryContainer = TacticalOrangeLight,
+    primary            = PrimaryOrange,
+    primaryContainer   = PrimaryGlow,
+    onPrimary          = AppBackground,
+    onPrimaryContainer = TextPrimary,
 
-    secondary         = NeonCyan,
-    secondaryContainer = NeonCyanGlow,
-    onSecondary       = PremiumDark,
+    secondary          = MintSuccess,
+    secondaryContainer = MintGlow,
+    onSecondary        = AppBackground,
 
-    tertiary          = WarningAmber,
-    tertiaryContainer = WarningGlow,
-    onTertiary        = PremiumDark,
+    tertiary           = PendingAmber,
+    tertiaryContainer  = WarningGlow,
+    onTertiary         = AppBackground,
 
-    background        = PremiumDark,
-    surface           = SurfaceDark,
-    surfaceVariant    = SurfaceElevated,
-    surfaceTint       = TacticalOrange,
+    background         = AppBackground,
+    surface            = CardSurface,
+    surfaceVariant     = CardSurfaceElevated,
+    surfaceTint        = PrimaryOrange,
 
-    onBackground      = TextPrimary,
-    onSurface         = TextPrimary,
-    onSurfaceVariant  = TextSecondary,
+    onBackground       = TextPrimary,
+    onSurface          = TextPrimary,
+    onSurfaceVariant   = TextSecondary,
 
-    outline           = BorderSubtle,
-    outlineVariant    = BorderAccent,
+    outline            = BorderSubtle,
+    outlineVariant     = BorderSoft,
 
-    error             = ErrorRed,
-    errorContainer    = ErrorGlow,
-    onError           = Color.White,
+    error              = SoftError,
+    errorContainer     = SoftErrorGlow,
+    onError            = TextPrimary,
 )
 
 @Composable
@@ -47,15 +45,12 @@ fun AXEVCRIME3DSTUDIOTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = DarkColorScheme
     val view = LocalView.current
-
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // Fundo da status bar = fundo do app (edge-to-edge)
-            window.statusBarColor = PremiumDark.toArgb()
-            window.navigationBarColor = PremiumDark.toArgb()
+            window.statusBarColor = AppBackground.toArgb()
+            window.navigationBarColor = AppBackground.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = false
                 isAppearanceLightNavigationBars = false
@@ -64,7 +59,7 @@ fun AXEVCRIME3DSTUDIOTheme(
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = DarkColorScheme,
         typography  = Typography,
         content     = content
     )
