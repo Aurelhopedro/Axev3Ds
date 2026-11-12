@@ -1,0 +1,875 @@
+name: AXEV 3D — Gerar Jogo
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      # 1
+      game_id:
+        description: "ID do jogo"
+        required: true
+        type: string
+        default: "game_001"
+
+      # 2
+      game_title:
+        description: "Título do jogo"
+        required: true
+        type: string
+        default: "AXEV Mission"
+
+      # 3
+      game_mode:
+        description: "Modo de jogo"
+        required: true
+        type: choice
+        default: "mission"
+        options:
+          - "mission"
+          - "arcade_race"
+          - "endless_runner"
+
+      # ════════════════════════════════════════
+      # MISSÃO
+      # ════════════════════════════════════════
+
+      # 4
+      mission_location:
+        description: "[MISSION] Localização"
+        required: true
+        type: choice
+        default: "urban_block"
+        options:
+          - "urban_block"
+          - "military_base"
+          - "freight_depot"
+          - "desert_compound"
+          - "market_street"
+
+      # 5
+      mission_goal:
+        description: "[MISSION] Objectivo"
+        required: true
+        type: choice
+        default: "escape"
+        options:
+          - "escape"
+          - "rescue"
+          - "clear"
+
+      # 6
+      mission_extraction:
+        description: "[MISSION] Extracção"
+        required: true
+        type: choice
+        default: "on_foot"
+        options:
+          - "on_foot"
+          - "pickup"
+          - "helicopter"
+
+      # 7
+      mission_difficulty:
+        description: "[MISSION] Dificuldade"
+        required: true
+        type: choice
+        default: "normal"
+        options:
+          - "easy"
+          - "normal"
+          - "hard"
+
+      # 8
+      mission_time:
+        description: "[MISSION] Hora do dia"
+        required: true
+        type: choice
+        default: "day"
+        options:
+          - "dawn"
+          - "day"
+          - "dusk"
+          - "night"
+
+      # 9
+      mission_weather:
+        description: "[MISSION] Clima"
+        required: true
+        type: choice
+        default: "clear"
+        options:
+          - "clear"
+          - "rain"
+          - "fog"
+          - "sandstorm"
+
+      # 10
+      mission_stealth:
+        description: "[MISSION] Modo stealth (falha ao ser detectado)"
+        required: true
+        type: choice
+        default: "false"
+        options:
+          - "true"
+          - "false"
+
+      # ════════════════════════════════════════
+      # HERÓI
+      # ════════════════════════════════════════
+
+      # 11
+      hero_preset:
+        description: "Herói — Preset"
+        required: true
+        type: choice
+        default: "The Soldier"
+        options:
+          - "Athletic man"
+          - "Athletic woman"
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Secret Agent"
+          - "The Professional Hitman"
+          - "The Bodyguard"
+          - "Detective"
+          - "The Adventurer"
+          - "The Cyberpunk Hacker"
+          - "The Wasteland Survivor"
+
+      # 12
+      hero_gender_age:
+        description: "Herói — Género:Idade"
+        required: true
+        type: choice
+        default: "male:25"
+        options:
+          - "male:18"
+          - "male:25"
+          - "male:30"
+          - "male:40"
+          - "male:50"
+          - "female:18"
+          - "female:25"
+          - "female:30"
+          - "female:40"
+
+      # 13
+      hero_weapon:
+        description: "Herói — Arma inicial"
+        required: true
+        type: choice
+        default: "pistol"
+        options:
+          - "none"
+          - "pistol"
+          - "rifle"
+
+      # ════════════════════════════════════════
+      # INIMIGOS
+      # ════════════════════════════════════════
+
+      # 14
+      enemy_count:
+        description: "Número de inimigos (1-5)"
+        required: true
+        type: choice
+        default: "3"
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+
+      # 15
+      enemy_role:
+        description: "Papel dos inimigos"
+        required: true
+        type: choice
+        default: "guard"
+        options:
+          - "guard"
+          - "rifleman"
+          - "heavy"
+          - "squad_leader"
+          - "elevated_sniper"
+          - "mixed"
+
+      # 16
+      enemy_preset:
+        description: "Inimigos — Preset visual"
+        required: true
+        type: choice
+        default: "The Soldier"
+        options:
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Bodyguard"
+          - "Athletic man"
+
+      # ════════════════════════════════════════
+      # ARCADE RACE
+      # ════════════════════════════════════════
+
+      # 17
+      race_circuit:
+        description: "[RACE] Circuito"
+        required: true
+        type: choice
+        default: "city_loop"
+        options:
+          - "city_loop"
+          - "desert_run"
+          - "harbour_sprint"
+          - "forest_ring"
+
+      # 18
+      race_laps:
+        description: "[RACE] Número de voltas"
+        required: true
+        type: choice
+        default: "3"
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "5"
+          - "9"
+
+      # 19
+      race_opponents:
+        description: "[RACE] Número de adversários"
+        required: true
+        type: choice
+        default: "5"
+        options:
+          - "3"
+          - "4"
+          - "5"
+          - "6"
+          - "7"
+
+      # 20
+      race_car:
+        description: "[RACE] Carro do jogador"
+        required: true
+        type: choice
+        default: "sports_car"
+        options:
+          - "sports_car"
+          - "muscle_car"
+          - "saloon"
+          - "go_kart"
+          - "suv"
+          - "pickup"
+          - "motorcycle"
+          - "danfo"
+          - "van"
+
+      # 21
+      race_handling:
+        description: "[RACE] Estilo de condução"
+        required: true
+        type: choice
+        default: "grip"
+        options:
+          - "grip"
+          - "drift"
+
+      # 22
+      race_ai_skill:
+        description: "[RACE] Dificuldade dos adversários"
+        required: true
+        type: choice
+        default: "medium"
+        options:
+          - "easy"
+          - "medium"
+          - "hard"
+
+      # ════════════════════════════════════════
+      # ENDLESS RUNNER
+      # ════════════════════════════════════════
+
+      # 23
+      runner_theme:
+        description: "[RUNNER] Tema do percurso"
+        required: true
+        type: choice
+        default: "city_rooftops"
+        options:
+          - "temple_ruins"
+          - "city_rooftops"
+          - "desert_canyon"
+          - "market_street"
+
+      # 24
+      runner_goal:
+        description: "[RUNNER] Objectivo da run"
+        required: true
+        type: choice
+        default: "distance"
+        options:
+          - "distance"
+          - "score"
+          - "coins"
+          - "objects"
+
+      # 25
+      runner_chaser:
+        description: "[RUNNER] Perseguidor"
+        required: true
+        type: choice
+        default: "The Soldier"
+        options:
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Bodyguard"
+          - "Athletic man"
+
+      # ════════════════════════════════════════
+      # ATMOSFERA (todos os modos)
+      # ════════════════════════════════════════
+
+      # 26
+      music:
+        description: "Música de fundo"
+        required: true
+        type: choice
+        default: "spy_mission"
+        options:
+          - "none"
+          - "dramatic_adventure"
+          - "spy_opening"
+          - "spy_mission"
+          - "urban_hip_hop"
+          - "horror"
+          - "afrobeat"
+          - "jazz_restaurant"
+          - "tropical_pop"
+          - "old_school_salsa"
+
+      # 27
+      chapters:
+        description: "Número de capítulos / etapas"
+        required: true
+        type: choice
+        default: "1"
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axev-game-${{ github.ref }}-${{ inputs.game_id }}
+  cancel-in-progress: false
+
+jobs:
+  generate-game:
+    name: "Gerar jogo"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ─── 1. VALIDAÇÃO ────────────────────────────────────────────────────
+      - name: Validar inputs
+        env:
+          INPUT_GAME_ID:    ${{ inputs.game_id }}
+          INPUT_ENEMY_COUNT: ${{ inputs.enemy_count }}
+          INPUT_CHAPTERS:   ${{ inputs.chapters }}
+        run: |
+          set -euo pipefail
+
+          if ! echo "$INPUT_GAME_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
+            echo "::error::game_id inválido: '$INPUT_GAME_ID'"
+            exit 1
+          fi
+          if [ "$INPUT_ENEMY_COUNT" -gt 5 ] 2>/dev/null; then
+            echo "::error::Máximo 5 inimigos."
+            exit 1
+          fi
+          if [ "$INPUT_CHAPTERS" -gt 5 ] 2>/dev/null; then
+            echo "::error::Máximo 5 capítulos."
+            exit 1
+          fi
+
+          echo "✅ Inputs validados."
+
+      # ─── 2. CHECKOUT ─────────────────────────────────────────────────────
+      - name: Checkout AXEV
+        uses: actions/checkout@v4
+
+      # ─── 3. CONSTRUIR JSON DO JOGO ────────────────────────────────────────
+      - name: Construir JSON do jogo (Ara Play format)
+        env:
+          GAME_ID:           ${{ inputs.game_id }}
+          GAME_TITLE:        ${{ inputs.game_title }}
+          GAME_MODE:         ${{ inputs.game_mode }}
+          MISSION_LOCATION:  ${{ inputs.mission_location }}
+          MISSION_GOAL:      ${{ inputs.mission_goal }}
+          MISSION_EXTRACTION: ${{ inputs.mission_extraction }}
+          MISSION_DIFFICULTY: ${{ inputs.mission_difficulty }}
+          MISSION_TIME:      ${{ inputs.mission_time }}
+          MISSION_WEATHER:   ${{ inputs.mission_weather }}
+          MISSION_STEALTH:   ${{ inputs.mission_stealth }}
+          HERO_PRESET:       ${{ inputs.hero_preset }}
+          HERO_GENDER_AGE:   ${{ inputs.hero_gender_age }}
+          HERO_WEAPON:       ${{ inputs.hero_weapon }}
+          ENEMY_COUNT:       ${{ inputs.enemy_count }}
+          ENEMY_ROLE:        ${{ inputs.enemy_role }}
+          ENEMY_PRESET:      ${{ inputs.enemy_preset }}
+          RACE_CIRCUIT:      ${{ inputs.race_circuit }}
+          RACE_LAPS:         ${{ inputs.race_laps }}
+          RACE_OPPONENTS:    ${{ inputs.race_opponents }}
+          RACE_CAR:          ${{ inputs.race_car }}
+          RACE_HANDLING:     ${{ inputs.race_handling }}
+          RACE_AI_SKILL:     ${{ inputs.race_ai_skill }}
+          RUNNER_THEME:      ${{ inputs.runner_theme }}
+          RUNNER_GOAL:       ${{ inputs.runner_goal }}
+          RUNNER_CHASER:     ${{ inputs.runner_chaser }}
+          MUSIC:             ${{ inputs.music }}
+          CHAPTERS:          ${{ inputs.chapters }}
+          RUN_NUMBER:        ${{ github.run_number }}
+          REPO:              ${{ github.repository }}
+        run: |
+          mkdir -p axev-build axev-output
+
+          python3 << 'PYEOF'
+          import json, os
+          from pathlib import Path
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          game_id    = env("GAME_ID")
+          game_title = env("GAME_TITLE")
+          mode       = env("GAME_MODE", "mission")
+          music_key  = env("MUSIC", "none")
+          chapters   = int(env("CHAPTERS", "1"))
+          run_number = env("RUN_NUMBER")
+          repo       = env("REPO")
+
+          MUSIC_IDS = {
+            "dramatic_adventure": "dramatic-adventure-trailer",
+            "spy_opening":        "spy-opening-scene",
+            "spy_mission":        "spy-agent-mission-music",
+            "urban_hip_hop":      "urban-hip-hop-beat",
+            "horror":             "horror",
+            "afrobeat":           "afrobeat-instrumental",
+            "jazz_restaurant":    "jazz-restaurant-music",
+            "tropical_pop":       "tropical-relaxing-pop",
+            "old_school_salsa":   "old-school-salsa-02",
+          }
+          music_id = MUSIC_IDS.get(music_key)
+
+          # ── Herói ─────────────────────────────────────────────────────────
+          hero_ga = env("HERO_GENDER_AGE", "male:25").split(":")
+          hero = {
+            "preset": env("HERO_PRESET", "The Soldier"),
+            "params": {
+              "gender": 0.0 if hero_ga[0] == "female" else 1.0,
+              "ageYears": int(hero_ga[1]) if len(hero_ga) > 1 else 25,
+            },
+            "weapon": env("HERO_WEAPON", "pistol"),
+          }
+
+          # ── Inimigos ──────────────────────────────────────────────────────
+          enemy_count = int(env("ENEMY_COUNT", "3"))
+          enemy_role  = env("ENEMY_ROLE", "guard")
+          enemy_preset = env("ENEMY_PRESET", "The Soldier")
+
+          ROLE_MAP = {
+            "guard":           "guard",
+            "rifleman":        "rifleman",
+            "heavy":           "heavy",
+            "squad_leader":    "squad_leader",
+            "elevated_sniper": "elevated_sniper",
+          }
+
+          def make_enemy(i):
+            if enemy_role == "mixed":
+              roles = ["guard", "rifleman", "squad_leader"]
+              role = roles[i % len(roles)]
+            else:
+              role = ROLE_MAP.get(enemy_role, "guard")
+            return {
+              "id": f"enemy_{i+1}",
+              "preset": enemy_preset,
+              "role": role,
+              "weapon": "rifle" if role in ("rifleman", "elevated_sniper", "heavy", "squad_leader") else "pistol",
+            }
+
+          enemies = [make_enemy(i) for i in range(enemy_count)]
+
+          # ── Capítulos ─────────────────────────────────────────────────────
+          def make_chapter(idx):
+            ch = {
+              "id": f"chapter_{idx+1}",
+              "title": f"{game_title} — Chapter {idx+1}" if chapters > 1 else game_title,
+            }
+
+            if mode == "mission":
+              ch["location"]   = env("MISSION_LOCATION", "urban_block")
+              ch["goal"]       = env("MISSION_GOAL", "escape")
+              ch["extraction"] = env("MISSION_EXTRACTION", "on_foot")
+              ch["difficulty"] = env("MISSION_DIFFICULTY", "normal")
+              ch["stealth"]    = env("MISSION_STEALTH", "false") == "true"
+              ch["environment"] = {
+                "time":    env("MISSION_TIME", "day"),
+                "weather": env("MISSION_WEATHER", "clear"),
+              }
+              ch["cast"] = {"hero": hero, "enemies": enemies}
+
+            elif mode == "arcade_race":
+              ch["mode"] = "race"
+              ch["race"] = {
+                "circuit":    env("RACE_CIRCUIT", "city_loop"),
+                "laps":       int(env("RACE_LAPS", "3")),
+                "opponents":  int(env("RACE_OPPONENTS", "5")),
+                "car":        env("RACE_CAR", "sports_car"),
+                "handling":   env("RACE_HANDLING", "grip"),
+                "aiSkill":    env("RACE_AI_SKILL", "medium"),
+                "rubberBand": True,
+                "nitro":      True,
+                "pickups":    True,
+                "ghost":      True,
+              }
+              ch["cast"] = {"hero": hero, "enemies": enemies[:min(enemy_count, int(env("RACE_OPPONENTS","5")))]}
+
+            elif mode == "endless_runner":
+              runner_goal = env("RUNNER_GOAL", "distance")
+              ch["mode"] = "runner"
+              ch["runner"] = {
+                "theme": env("RUNNER_THEME", "city_rooftops"),
+                "goal":  {"type": runner_goal},
+                "medals": {"bronze": 1500, "silver": 4000, "gold": 8000},
+              }
+              ch["cast"] = {
+                "hero": hero,
+                "chaser": {"preset": env("RUNNER_CHASER", "The Soldier")},
+              }
+
+            if music_id:
+              ch["music"] = {"id": music_id, "volume": 0.75}
+
+            return ch
+
+          chapter_list = [make_chapter(i) for i in range(chapters)]
+
+          # ── JSON final ────────────────────────────────────────────────────
+          game_json = {
+            "kind":     "ara-play",
+            "version":  1,
+            "mode":     "mission" if mode == "mission" else ("race" if mode == "arcade_race" else "runner"),
+            "meta": {
+              "id":    game_id,
+              "title": game_title,
+              "run":   int(run_number) if run_number else 0,
+              "repo":  repo,
+            },
+            "title":    game_title,
+            "chapters": chapter_list,
+            "poses": {"lookAround": True, "dance": True},
+          }
+
+          out = Path("axev-build/game.json")
+          out.write_text(json.dumps(game_json, indent=2, ensure_ascii=False))
+          print(f"✅ JSON do jogo gerado: {out}")
+          print(f"   Modo: {mode}")
+          print(f"   Capítulos: {chapters}")
+          print(f"   Herói: {hero['preset']}")
+          print(f"   Inimigos: {enemy_count}x {enemy_role}")
+          PYEOF
+
+      # ─── 4. GERAR CATÁLOGO DO JOGO ───────────────────────────────────────
+      - name: Gerar catálogo do jogo
+        env:
+          GAME_ID:           ${{ inputs.game_id }}
+          GAME_TITLE:        ${{ inputs.game_title }}
+          GAME_MODE:         ${{ inputs.game_mode }}
+          MISSION_LOCATION:  ${{ inputs.mission_location }}
+          MISSION_GOAL:      ${{ inputs.mission_goal }}
+          MISSION_EXTRACTION: ${{ inputs.mission_extraction }}
+          MISSION_DIFFICULTY: ${{ inputs.mission_difficulty }}
+          MISSION_TIME:      ${{ inputs.mission_time }}
+          MISSION_WEATHER:   ${{ inputs.mission_weather }}
+          MISSION_STEALTH:   ${{ inputs.mission_stealth }}
+          HERO_PRESET:       ${{ inputs.hero_preset }}
+          HERO_GENDER_AGE:   ${{ inputs.hero_gender_age }}
+          HERO_WEAPON:       ${{ inputs.hero_weapon }}
+          ENEMY_COUNT:       ${{ inputs.enemy_count }}
+          ENEMY_ROLE:        ${{ inputs.enemy_role }}
+          ENEMY_PRESET:      ${{ inputs.enemy_preset }}
+          RACE_CIRCUIT:      ${{ inputs.race_circuit }}
+          RACE_LAPS:         ${{ inputs.race_laps }}
+          RACE_OPPONENTS:    ${{ inputs.race_opponents }}
+          RACE_CAR:          ${{ inputs.race_car }}
+          RACE_HANDLING:     ${{ inputs.race_handling }}
+          RACE_AI_SKILL:     ${{ inputs.race_ai_skill }}
+          RUNNER_THEME:      ${{ inputs.runner_theme }}
+          RUNNER_GOAL:       ${{ inputs.runner_goal }}
+          RUNNER_CHASER:     ${{ inputs.runner_chaser }}
+          MUSIC:             ${{ inputs.music }}
+          CHAPTERS:          ${{ inputs.chapters }}
+          RUN_NUMBER:        ${{ github.run_number }}
+          REPO:              ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, hashlib
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          game_id    = env("GAME_ID")
+          game_title = env("GAME_TITLE")
+          mode       = env("GAME_MODE", "mission")
+          chapters   = env("CHAPTERS", "1")
+          run_number = env("RUN_NUMBER")
+          repo       = env("REPO")
+          gen_date   = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+          game_path = Path("axev-build/game.json")
+          game_data = json.loads(game_path.read_text())
+          game_hash = hashlib.sha256(game_path.read_bytes()).hexdigest()[:16] + "…"
+
+          # Secção específica por modo
+          MODE_SECTION = {
+            "mission": f"""
+          ## 3. CONFIGURAÇÃO DA MISSÃO
+
+          | Campo | Valor |
+          |---|---|
+          | localização | {env("MISSION_LOCATION")} |
+          | objectivo | {env("MISSION_GOAL")} |
+          | extracção | {env("MISSION_EXTRACTION")} |
+          | dificuldade | {env("MISSION_DIFFICULTY")} |
+          | hora | {env("MISSION_TIME")} |
+          | clima | {env("MISSION_WEATHER")} |
+          | stealth | {env("MISSION_STEALTH")} |
+
+          > ⚠️ Stealth=true: qualquer detecção, disparo ou explosão falha a missão.
+
+          ## 4. CAST
+
+          | Campo | Valor |
+          |---|---|
+          | herói_preset | {env("HERO_PRESET")} |
+          | herói_gender_age | {env("HERO_GENDER_AGE")} |
+          | herói_arma | {env("HERO_WEAPON")} |
+          | inimigos | {env("ENEMY_COUNT")}x {env("ENEMY_ROLE")} |
+          | inimigos_preset | {env("ENEMY_PRESET")} |
+
+          **Papéis dos inimigos:**
+          - guard — pistola, patrulha, captura
+          - rifleman — rajadas telegrafadas
+          - heavy — 300 HP, supressão
+          - squad_leader — 150 HP, reduz detecção do squad ao ser eliminado
+          - elevated_sniper — posição de telhado, alcance longo
+          """,
+            "arcade_race": f"""
+          ## 3. CONFIGURAÇÃO DA CORRIDA
+
+          | Campo | Valor |
+          |---|---|
+          | circuito | {env("RACE_CIRCUIT")} |
+          | voltas | {env("RACE_LAPS")} |
+          | adversários | {env("RACE_OPPONENTS")} |
+          | carro | {env("RACE_CAR")} |
+          | condução | {env("RACE_HANDLING")} |
+          | dificuldade_AI | {env("RACE_AI_SKILL")} |
+          | rubber_band | true |
+          | nitro | true |
+          | pickups | true |
+          | ghost | true |
+
+          > ⚠️ Drift: segura Drift em curvas para derrapar e carregar boost. Grip: Drift funciona como travão.
+          """,
+            "endless_runner": f"""
+          ## 3. CONFIGURAÇÃO DO RUNNER
+
+          | Campo | Valor |
+          |---|---|
+          | tema | {env("RUNNER_THEME")} |
+          | objectivo | {env("RUNNER_GOAL")} |
+          | perseguidor | {env("RUNNER_CHASER")} |
+          | medals | bronze 1500 · silver 4000 · gold 8000 pts |
+          | obstáculos | low barrier · overhead bar · gap · lane blocker · moving cart |
+
+          > ⚠️ Stumble = tropeçar num obstáculo; 2 stumbles seguidos = apanhado.
+          """,
+          }
+
+          md = f"""# AXEV Game Catalog
+          <!-- Gerado automaticamente pelo pipeline ara-axev-game.yml — NÃO editar manualmente -->
+
+          ## 1. IDENTIFICAÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | id | `{game_id}` |
+          | título | {game_title} |
+          | modo | {mode} |
+          | capítulos | {chapters} |
+          | pipeline_version | ara-axev-game.yml · run #{run_number} |
+          | repo | {repo} |
+          | hash_json (SHA-256 parcial) | `{game_hash}` |
+          | data_geracao | {gen_date} |
+          | motor | Ara Play (olatunde85/3d-gen) |
+          | formato_saida | Ara Play JSON (ara-play v1) |
+
+          ---
+
+          ## 2. MODO DE JOGO
+
+          | Campo | Valor |
+          |---|---|
+          | mode | {mode} |
+          | capítulos | {chapters} (máx 5) |
+          | música | {env("MUSIC")} |
+          | character_moments | lookAround=true · dance=true |
+          | save_local | automático (browser IndexedDB) |
+          | export_zip | disponível no Ara Play (HTML/JS independente) |
+
+          ---
+          {MODE_SECTION.get(mode, "")}
+          ---
+
+          ## 5. CONTROLOS
+
+          | Acção | Teclado | Gamepad | Touch |
+          |---|---|---|---|
+          | Mover / acelerar | WASD / setas | Stick esquerdo | Swipe / botões |
+          | Sprint | Shift | — | Botão sprint |
+          | Agachar | C | — | Botão crouch |
+          | Interagir | E | A | Botão interact |
+          | Saltar / travar | Space | A | Botão jump |
+          | Mirar | Rato direito / Q | Trigger esq | Botão aim |
+          | Disparar | Rato esq / F | Trigger dir | Botão fire |
+          | Recarregar | R | X | Botão reload |
+          | Granada | G → F | B | Botão grenade |
+          | Pausa | Esc | Start | Botão pause |
+
+          ---
+
+          ## 6. MECÂNICAS PRINCIPAIS
+
+          | Mecânica | Detalhe |
+          |---|---|
+          | cobertura | take_cover · cover_fire · cover_wall 1.1m |
+          | stealth | agachar + aproximação traseira = takedown silencioso |
+          | granadas | arco visível · fuse 2.6s · blast com cobertura sólida |
+          | veículos | condução + disparo simultâneo · cone ±110° H · -45°/+60° V |
+          | checkpoints | automáticos por objectivo completo |
+          | campanhas | herói + armas desbloqueadas avançam entre capítulos |
+          | medalhas | No alarms · No damage · Under par (180s default) |
+
+          ---
+
+          ## 7. METADADOS DE PRODUÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | game_mode | {mode} |
+          | hero_preset | {env("HERO_PRESET")} |
+          | hero_weapon | {env("HERO_WEAPON")} |
+          | enemy_count | {env("ENEMY_COUNT")} |
+          | enemy_role | {env("ENEMY_ROLE")} |
+          | music | {env("MUSIC")} |
+          | chapters | {chapters} |
+          | config_file | ara-axev-game.yml |
+
+          ### JSON completo (game.json)
+          ```json
+          {json.dumps(game_data, indent=2, ensure_ascii=False)}
+          ```
+
+          ---
+
+          ## 8. VALIDAÇÃO E QA
+
+          | Verificação | Como validar | Esperado |
+          |---|---|---|
+          | JSON válido | python3 -c "import json; json.load(open('game.json'))" | sem erros |
+          | Capítulos ≤ 5 | len(chapters) | ≤ 5 |
+          | Inimigos ≤ 5 | len(enemies) | ≤ 5 |
+          | Arma de combate disponível | hero_weapon ≠ none se goal=clear | ✅ ou unlock em chain |
+          | Extracção compatível | helicopter → landing area automática | ✅ |
+          | Stealth + clear | incompatível (clear requer disparo) | ⚠️ evitar combinação |
+          | Test play | npm run test:play | todos os checks passam |
+
+          ---
+
+          ## COMO USAR NO ARA PLAY
+
+          1. Abre **Ara Play** em [ara3dgen.com/play](https://ara3dgen.com/play/)
+          2. Clica em **LLM Assist → Open setup**
+          3. Cola ou carrega o ficheiro **AXEV_GAME.json**
+          4. Clica **Game preparation** para validar e preview
+          5. Joga directamente no browser
+          6. Ou clica **Download game ZIP** para jogo independente (HTML/JS)
+
+          ---
+          *Pipeline: ara-axev-game.yml · Run #{run_number} · {gen_date}*
+          """
+
+          out = Path("axev-output/AXEV_GAME_CATALOG.md")
+          out.write_text(md, encoding="utf-8")
+          print(f"✅ Catálogo do jogo gerado: {out} ({out.stat().st_size} bytes)")
+          PYEOF
+
+      # ─── 5. PREPARAR OUTPUT ───────────────────────────────────────────────
+      - name: Preparar output
+        env:
+          GAME_ID:    ${{ inputs.game_id }}
+          GAME_TITLE: ${{ inputs.game_title }}
+          GAME_MODE:  ${{ inputs.game_mode }}
+          CHAPTERS:   ${{ inputs.chapters }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REPO:       ${{ github.repository }}
+        run: |
+          mkdir -p axev-output
+          cp axev-build/game.json axev-output/AXEV_GAME.json
+
+          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          cat > axev-output/AXEV_GAME_REPORT.md << EOF
+          # AXEV 3D — Relatório do Jogo
+
+          ## Identificação
+          - **ID**: ${GAME_ID}
+          - **Título**: ${GAME_TITLE}
+          - **Modo**: ${GAME_MODE}
+          - **Capítulos**: ${CHAPTERS}
+          - **Run**: #${RUN_NUMBER} | **Repo**: ${REPO}
+          - **Data**: ${DATA}
+
+          ## Como usar
+          1. Abre **[ara3dgen.com/play](https://ara3dgen.com/play/)**
+          2. Clica **LLM Assist → Open setup**
+          3. Carrega **AXEV_GAME.json**
+          4. Clica **Game preparation** → preview imediato
+          5. Para partilhar: **Download game ZIP** → jogo HTML independente
+
+          ## Ficheiros
+          - 🎮 [Game JSON](./AXEV_GAME.json) — abre directamente no Ara Play
+          - 📄 [Catálogo do Jogo](./AXEV_GAME_CATALOG.md)
+
+          ---
+          *Gerado por AXEV 3D Studio — ara-axev-game.yml*
+          EOF
+
+      # ─── 6. PUBLICAR ARTEFACTO ───────────────────────────────────────────
+      - name: Publicar artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-GAME-${{ inputs.game_id }}
+          path: axev-output/
+          if-no-files-found: error
+          retention-days: 14
