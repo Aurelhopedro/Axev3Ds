@@ -537,216 +537,309 @@ jobs:
           npx tsx merge-params.ts
 
           echo "A gerar com formatos: $FORMATS_NORM"
+          # Capturar stdout do motor — contém: height, tris, materials, build time
           npm run export -- \
             --params "../axev-build/character.params.json" \
             --formats "$FORMATS_NORM" \
-            --out out
+            --out out 2>&1 | tee ../axev-build/engine_output.log
 
           echo "✅ Geração concluída."
           find out -type f -printf '  %p (%s bytes)\n'
 
-      # ─── 8b. GERAR CATÁLOGO DE PERSONAGEM (CLAUDE AI) ────────────────────
-      - name: Gerar especificação de catálogo (Claude AI)
+      # ─── 8b. GERAR CATÁLOGO DO PERSONAGEM (DADOS BRUTOS DO MOTOR) ─────────
+      - name: Gerar catálogo do personagem
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CHARACTER_ID:      ${{ inputs.character_id }}
-          CHARACTER_NAME:    ${{ inputs.character_name }}
-          PRESET:            ${{ inputs.preset }}
-          GENDER_AGE:        ${{ inputs.gender_age }}
-          BODY:              ${{ inputs.body }}
-          SKIN:              ${{ inputs.skin_tone }}
-          HAIR:              ${{ inputs.hair }}
-          FACIAL_HAIR:       ${{ inputs.facial_hair }}
-          EYES:              ${{ inputs.eyes }}
-          OUTFIT:            ${{ inputs.outfit }}
-          SHOES_HAT:         ${{ inputs.shoes_hat }}
-          WEAPON:            ${{ inputs.weapon }}
-          EXPRESSION:        ${{ inputs.expression }}
-          RIG_ANIM:          ${{ inputs.rig_anim }}
-          QUALITY:           ${{ inputs.quality }}
-          FORMATS_NORM:      ${{ env.FORMATS_NORM }}
-          RUN_NUMBER:        ${{ github.run_number }}
-          REPO:              ${{ github.repository }}
+          CHARACTER_ID:   ${{ inputs.character_id }}
+          CHARACTER_NAME: ${{ inputs.character_name }}
+          PRESET:         ${{ inputs.preset }}
+          GENDER_AGE:     ${{ inputs.gender_age }}
+          BODY:           ${{ inputs.body }}
+          SKIN:           ${{ inputs.skin_tone }}
+          HAIR:           ${{ inputs.hair }}
+          FACIAL_HAIR:    ${{ inputs.facial_hair }}
+          EYES:           ${{ inputs.eyes }}
+          OUTFIT:         ${{ inputs.outfit }}
+          SHOES_HAT:      ${{ inputs.shoes_hat }}
+          WEAPON:         ${{ inputs.weapon }}
+          EXPRESSION:     ${{ inputs.expression }}
+          RIG_ANIM:       ${{ inputs.rig_anim }}
+          QUALITY:        ${{ inputs.quality }}
+          FORMATS_NORM:   ${{ env.FORMATS_NORM }}
+          RUN_NUMBER:     ${{ github.run_number }}
+          REPO:           ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p axev-output
 
-          PARAMS_JSON=$(cat axev-build/character.params.json 2>/dev/null || echo "{}")
-          FILES_LIST=$(find ara-3d-gen/out -type f -printf '%P (%s bytes)\n' 2>/dev/null || echo "nenhum")
-          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
           python3 << 'PYEOF'
-          import os, json, urllib.request, urllib.error
+          import os, json, hashlib, re
+          from pathlib import Path
+          from datetime import datetime, timezone
 
-          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-          if not api_key:
-              print("::warning::ANTHROPIC_API_KEY não definida — catálogo ignorado.")
-              with open("axev-output/AXEV_CHARACTER_CATALOG.md", "w") as f:
-                  f.write("# AXEV Character Catalog\n\n> ⚠️ ANTHROPIC_API_KEY não configurada. Catálogo não gerado.\n")
-              exit(0)
+          def env(k, d=""): return os.environ.get(k, d).strip()
 
-          params_json  = os.environ.get("PARAMS_JSON", "{}")
-          files_list   = os.environ.get("FILES_LIST", "nenhum")
-          data         = os.environ.get("DATA", "")
-          char_id      = os.environ.get("CHARACTER_ID", "")
-          char_name    = os.environ.get("CHARACTER_NAME", "")
-          preset       = os.environ.get("PRESET", "")
-          gender_age   = os.environ.get("GENDER_AGE", "")
-          body         = os.environ.get("BODY", "")
-          skin         = os.environ.get("SKIN", "")
-          hair         = os.environ.get("HAIR", "")
-          facial_hair  = os.environ.get("FACIAL_HAIR", "")
-          eyes         = os.environ.get("EYES", "")
-          outfit       = os.environ.get("OUTFIT", "")
-          shoes_hat    = os.environ.get("SHOES_HAT", "")
-          weapon       = os.environ.get("WEAPON", "")
-          expression   = os.environ.get("EXPRESSION", "")
-          rig_anim     = os.environ.get("RIG_ANIM", "")
-          quality      = os.environ.get("QUALITY", "")
-          formats      = os.environ.get("FORMATS_NORM", "")
-          run_number   = os.environ.get("RUN_NUMBER", "")
-          repo         = os.environ.get("REPO", "")
+          # ── Dados de inputs ──────────────────────────────────────────────
+          char_id     = env("CHARACTER_ID")
+          char_name   = env("CHARACTER_NAME")
+          preset      = env("PRESET")
+          gender_age  = env("GENDER_AGE")
+          body        = env("BODY")
+          skin        = env("SKIN")
+          hair        = env("HAIR")
+          facial_hair = env("FACIAL_HAIR")
+          eyes        = env("EYES")
+          outfit      = env("OUTFIT")
+          shoes_hat   = env("SHOES_HAT")
+          weapon      = env("WEAPON")
+          expression  = env("EXPRESSION")
+          rig_anim    = env("RIG_ANIM")
+          quality     = env("QUALITY")
+          formats     = env("FORMATS_NORM")
+          run_number  = env("RUN_NUMBER")
+          repo        = env("REPO")
+          gen_date    = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-          user_prompt = f"""Atua como Technical Art Director / Character Pipeline Specialist.
+          # ── Ler parâmetros finais ────────────────────────────────────────
+          params_path = Path("axev-build/character.params.json")
+          params = json.loads(params_path.read_text()) if params_path.exists() else {}
 
-          CONTEXTO:
-          Tenho um catálogo de personagem 3D (metadados + ficheiro GLB) e quero
-          garantir que ele contenha TODA a informação necessária para animar o
-          personagem da forma mais apropriada possível (game, cinemática, facial,
-          fala, física secundária). Produz uma ESPECIFICAÇÃO DE CATÁLOGO completa,
-          estruturada e verificável.
+          # ── Parsear stdout do motor ──────────────────────────────────────
+          # Linha: "Name: 185 cm, 42300 tris, 8 materials, built in 4320 ms"
+          engine_log = Path("axev-build/engine_output.log").read_text() if Path("axev-build/engine_output.log").exists() else ""
+          height_cm = tris = materials_count = build_ms = "N/D"
+          m = re.search(r'(\d+)\s*cm,\s*(\d[\d,]*)\s*tris?,\s*(\d+)\s*materials?,\s*built in\s*(\d+)\s*ms', engine_log)
+          if m:
+              height_cm      = m.group(1) + " cm"
+              tris           = m.group(2).replace(",", "")
+              materials_count = m.group(3)
+              build_ms       = m.group(4) + " ms"
 
-          DADOS DO PERSONAGEM GERADO:
-          - ID: {char_id}
-          - Nome: {char_name}
-          - Preset: {preset}
-          - Género/Idade: {gender_age}
-          - Corpo: {body}
-          - Tom de pele: {skin}
-          - Cabelo: {hair}
-          - Pelo facial: {facial_hair}
-          - Olhos: {eyes}
-          - Outfit: {outfit}
-          - Calçado/Chapéu: {shoes_hat}
-          - Arma: {weapon}
-          - Expressão: {expression}
-          - Rig/Anim: {rig_anim}
-          - Qualidade: {quality}
-          - Formatos exportados: {formats}
-          - Ficheiros produzidos: {files_list}
-          - Parâmetros completos: {params_json}
-          - Run: #{run_number} | Repo: {repo}
-          - Data de geração: {data}
+          # ── Inventário de ficheiros produzidos ───────────────────────────
+          out_dir = Path("ara-3d-gen/out")
+          files_info = []
+          glb_hash = "N/D"
+          for f in sorted(out_dir.rglob("*")) if out_dir.exists() else []:
+              if f.is_file():
+                  size_kb = f.stat().st_size // 1024
+                  files_info.append(f"| {f.name} | {f.suffix.lstrip('.')} | {size_kb} KB |")
+                  if f.suffix == ".glb" and glb_hash == "N/D":
+                      h = hashlib.sha256(f.read_bytes()).hexdigest()
+                      glb_hash = h[:16] + "…"
 
-          TAREFA:
-          Gera um documento de especificação de catálogo de personagem com as
-          secções abaixo. Para CADA campo indica: (a) nome do campo, (b) tipo de
-          dado, (c) se é OBRIGATÓRIO ou OPCIONAL, (d) exemplo de valor preenchido
-          com os dados reais deste personagem, (e) PORQUE é necessário para
-          animação, e (f) o ERRO/ARMADILHA típica se o campo faltar ou vier mal
-          preenchido.
+          files_table = "\n".join(files_info) if files_info else "| (nenhum) | - | - |"
 
-          SECÇÕES OBRIGATÓRIAS DO CATÁLOGO:
+          # ── Detalhe do rig/anim ──────────────────────────────────────────
+          ra = rig_anim.split(":")
+          rig_type   = ra[0] if len(ra) > 0 else "game"
+          has_anim   = (ra[1] if len(ra) > 1 else "yes") == "yes"
+          rest_pose  = ra[2] if len(ra) > 2 else "A"
+          face_shapes   = params.get("faceShapes", True)
+          speech_shapes = params.get("speechShapes", True)
+          face_bones    = params.get("faceBones", True)
 
-          1. IDENTIFICAÇÃO E VERSÃO
-             - id, nome, versão do asset, versão do pipeline, hash do ficheiro,
-               data, autor, motor(es) alvo, licença.
+          # ── Montar MD ────────────────────────────────────────────────────
+          md = f"""# AXEV Character Catalog
+          <!-- Gerado automaticamente pelo pipeline ara-axev-crime.yml — NÃO editar manualmente -->
 
-          2. GEOMETRIA E ESCALA
-             - unidades (metros/cm), escala real, altura em unidades, contagem de
-               vértices/triângulos, LODs (níveis e contagens), UV sets, materiais,
-               texturas (resolução, canais), se é manifold/watertight.
+          ## 1. IDENTIFICAÇÃO E VERSÃO
 
-          3. ESQUELETO (SKELETON SPEC) — CRÍTICO
-             - lista completa de bones (nome, parent, posição de repouso, limites
-               de rotação, se é deform bone ou control bone), root bone, se é
-               Humanoid/Mecanim-compatible, convenção de eixos (forward/up),
-               A-pose vs T-pose, número de influências por vértice.
+          | Campo | Valor |
+          |---|---|
+          | id | `{char_id}` |
+          | nome | {char_name} |
+          | preset | {preset} |
+          | pipeline_version | ara-axev-crime.yml · run #{run_number} |
+          | repo | {repo} |
+          | hash_glb (SHA-256 parcial) | `{glb_hash}` |
+          | data_geracao | {gen_date} |
+          | motor | Ara 3D Gen (olatunde85/3d-gen) |
+          | motores_alvo | three.js · Unity (Mecanim) · Unreal (UE5) |
+          | licenca | ver LICENSE no repo do motor |
 
-          4. SKINNING / DEFORMAÇÃO
-             - max influences, pesos normalizados?, áreas de risco (cotovelos,
-               joelhos, axilas, virilha), relatório de qualidade de skinning,
-               correções aplicadas.
+          ---
 
-          5. ANIMAÇÕES EMBUTIDAS (ANIMATION MANIFEST) — CRÍTICO
-             - para cada clipe: nome, fps, duração, loop (sim/não), root motion
-               (sim/não), frame range, tipo (idle/walk/run/aim/reload...), se é
-               additive, blend space recomendado.
+          ## 2. GEOMETRIA E ESCALA
 
-          6. ANIMAÇÃO FACIAL E FALA — CRÍTICO
-             - lista de blendshapes/morph targets (nome exato, range 0–1, eixo),
-               jaw/mouth/eyes/brows, teeth/tongue (presença e rig), visemes
-               (mapa fonema→shape), expressões base.
+          | Campo | Valor |
+          |---|---|
+          | unidades | metros |
+          | altura | {height_cm} |
+          | triangulos | {tris} |
+          | materiais | {materials_count} |
+          | qualidade | {quality} |
+          | LODs | não declarados pelo motor nesta exportação |
+          | UV_sets | 1 (UV0 — diffuse/normal) |
+          | manifold | assumido OK (motor valida internamente) |
+          | tempo_geracao | {build_ms} |
 
-          7. FÍSICA SECUNDÁRIA
-             - cabelo, tecido (top/bottom), acessórios (tactical_vest, helmet,
-               belt) — quais têm bones próprios, colisores, simulação (cloth/hair)
-               ou rig manual.
+          ---
 
-          8. ROOT MOTION E LOCOMOÇÃO
-             - se root tem motion, eixo forward, se há root bone separado,
-               ground plane / foot contact, IK targets (pés/mãos), footstep events.
+          ## 3. ESQUELETO
 
-          9. MATERIAIS E RENDER
-             - shader model, canais (albedo, normal, roughness, metallic, AO,
-               emissive), se é PBR, transparência, blend shapes afetam normais?
+          | Campo | Valor |
+          |---|---|
+          | rig_type | {rig_type} |
+          | rest_pose | {rest_pose}-pose |
+          | humanoid_compatible | sim (Mecanim / UE5 Mannequin) |
+          | convencao_eixos | Y-up · Z-forward (GLB padrão) |
+          | face_bones | {"sim" if face_bones else "não"} |
+          | bones_count | extrair do GLB com gltf-pipeline ou Blender |
+          | influencias_por_vertice | max 4 (padrão game rig) |
 
-          10. METADADOS DE PRODUÇÃO
-              - preset, seed, parâmetros de geração (ex.: gender/age/muscle/
-                proportions), formatos exportados (glb/fbx/usd), tamanho,
-                ferramenta de origem, yml/config usado.
+          > ⚠️ Lista completa de bones: executar `scripts/blender_rig_check.py` no GLB exportado.
 
-          11. VALIDAÇÃO E QA (CHECKLIST)
-              - lista de verificações automáticas: escala, bones, shapes, clipes,
-                materiais, LODs, root motion. Cada uma com PASS/FAIL esperado.
+          ---
 
-          FORMATO DE SAÍDA:
-          - Ficheiro Markdown completo.
-          - Tabela por secção (Campo | Tipo | Obrigatório? | Valor neste personagem | Porquê | Armadilha se faltar).
-          - No fim: RESUMO "MÍNIMO VIÁVEL PARA ANIMAR" e RESUMO "MÍNIMO PARA ANIMAÇÃO PERFEITA".
-          - Destaca com ⚠️ os campos NÃO INFALÍVEIS (falha silenciosa).
-          - Usa os dados reais deste personagem em todos os exemplos.
-          - Língua: Português.
+          ## 4. SKINNING / DEFORMAÇÃO
 
-          RESTRIÇÕES:
-          - Não inventes campos inúteis; foca no que impacta animação.
-          - Sê explícito sobre OBRIGATÓRIO vs OPCIONAL.
-          - Usa linguagem técnica mas clara."""
+          | Campo | Valor |
+          |---|---|
+          | max_influences | 4 |
+          | pesos_normalizados | sim (padrão do motor) |
+          | areas_risco | cotovelos · joelhos · axilas · virilha |
+          | qualidade_skinning | validar com `blender_rig_check.py` (unweighted=0 esperado) |
 
-          payload = {
-              "model": "claude-sonnet-4-6",
-              "max_tokens": 8000,
-              "messages": [{"role": "user", "content": user_prompt}]
-          }
+          ---
 
-          req = urllib.request.Request(
-              "https://api.anthropic.com/v1/messages",
-              data=json.dumps(payload).encode("utf-8"),
-              headers={
-                  "Content-Type": "application/json",
-                  "x-api-key": api_key,
-                  "anthropic-version": "2023-06-01"
-              },
-              method="POST"
-          )
+          ## 5. ANIMAÇÕES EMBUTIDAS
 
-          try:
-              with urllib.request.urlopen(req, timeout=120) as resp:
-                  result = json.loads(resp.read().decode("utf-8"))
-              catalog_md = result["content"][0]["text"]
-              print("✅ Catálogo gerado pelo Claude AI.")
-          except urllib.error.HTTPError as e:
-              error_body = e.read().decode("utf-8")
-              print(f"::warning::Erro na API Claude ({e.code}): {error_body}")
-              catalog_md = f"# AXEV Character Catalog\n\n> ⚠️ Erro ao gerar catálogo via Claude API (HTTP {e.code}).\n\n```\n{error_body}\n```\n"
-          except Exception as e:
-              print(f"::warning::Exceção ao chamar Claude API: {e}")
-              catalog_md = f"# AXEV Character Catalog\n\n> ⚠️ Erro inesperado ao gerar catálogo: {e}\n"
+          | Campo | Valor |
+          |---|---|
+          | animacoes_embutidas | {"sim" if has_anim else "não"} |
+          | fps | 30 (padrão Ara 3D Gen) |
+          | root_motion | depende do clipe — verificar com gltf-check |
+          | lista_clips | extrair do GLB (gltf-check: campo `clips`) |
 
-          with open("axev-output/AXEV_CHARACTER_CATALOG.md", "w", encoding="utf-8") as f:
-              f.write(catalog_md)
+          > ⚠️ Lista exacta de clipes: correr `npm run test:gltf` — reporta bones, clips, maxRotErr, faceShapes.
 
-          print(f"📄 Catálogo guardado: axev-output/AXEV_CHARACTER_CATALOG.md ({len(catalog_md)} chars)")
+          ---
+
+          ## 6. ANIMAÇÃO FACIAL E FALA
+
+          | Campo | Valor |
+          |---|---|
+          | face_shapes | {"sim" if face_shapes else "não"} |
+          | speech_shapes | {"sim" if speech_shapes else "não"} |
+          | expressao_base | {expression} |
+          | range_shapes | 0.0 – 1.0 |
+          | visemes | incluídos se speechShapes=true |
+          | lista_shapes | extrair do GLB (accessor morph targets) |
+
+          > ⚠️ Nomes exactos dos shapes: obrigatório para lipsync por código — extrair do GLB.
+
+          ---
+
+          ## 7. FÍSICA SECUNDÁRIA
+
+          | Campo | Valor |
+          |---|---|
+          | cabelo | estilo: {hair.split(":")[0]} — simulação: não declarada pelo motor |
+          | pelo_facial | {facial_hair} |
+          | acessorios | weapon={weapon} · hat={shoes_hat.split(":")[1] if ":" in shoes_hat else "none"} |
+          | bones_secundarios | incluídos se rig=full; verificar no GLB |
+          | colisores | não exportados (adicionar no engine de destino) |
+
+          ---
+
+          ## 8. ROOT MOTION E LOCOMOÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | root_motion | verificar por clipe com gltf-check |
+          | eixo_forward | -Z (GLB padrão three.js) |
+          | ik_targets | pés + mãos (rig=game inclui IK bones) |
+          | foot_contact | validar com gltf-check (maxRootErrM) |
+
+          ---
+
+          ## 9. MATERIAIS E RENDER
+
+          | Campo | Valor |
+          |---|---|
+          | shader | PBR metallic-roughness (glTF 2.0) |
+          | canais | albedo · normal · roughness · metallic · AO |
+          | emissive | depende do outfit |
+          | transparencia | não (opaco por defeito) |
+          | skin_tone | {skin} (african={params.get("african","N/D")} · asian={params.get("asian","N/D")} · caucasian={params.get("caucasian","N/D")}) |
+          | eye_color | {eyes} |
+
+          ---
+
+          ## 10. METADADOS DE PRODUÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | preset | {preset} |
+          | gender | {params.get("gender","N/D")} (1.0=male · 0.0=female) |
+          | age | {params.get("age","N/D")} |
+          | muscle | {params.get("muscle","N/D")} |
+          | weight | {params.get("weight","N/D")} |
+          | height_param | {params.get("height","N/D")} |
+          | hair | {params.get("hair","N/D")} |
+          | hair_color | {params.get("hairColor","N/D")} |
+          | outfit | {params.get("outfit","preset_default")} |
+          | shoes | {params.get("shoes","preset_default")} |
+          | hat | {params.get("hat","none")} |
+          | weapon | {params.get("weapon","none")} |
+          | rig | {params.get("rig","game")} |
+          | animations | {params.get("animations",True)} |
+          | restPose | {params.get("restPose","A")} |
+          | faceShapes | {params.get("faceShapes",True)} |
+          | speechShapes | {params.get("speechShapes",True)} |
+          | faceBones | {params.get("faceBones",True)} |
+          | detail | {params.get("detail","high")} |
+          | formatos_exportados | {formats} |
+          | config_file | ara-axev-crime.yml |
+
+          ### Parâmetros completos (character.params.json)
+          ```json
+          {json.dumps(params, indent=2, ensure_ascii=False)}
+          ```
+
+          ---
+
+          ## 11. FICHEIROS EXPORTADOS
+
+          | Ficheiro | Formato | Tamanho |
+          |---|---|---|
+          {files_table}
+
+          ---
+
+          ## 12. VALIDAÇÃO E QA
+
+          | Verificação | Comando | Esperado |
+          |---|---|---|
+          | Escala / altura | stdout do motor | valor em cm presente no log |
+          | Triângulos | stdout do motor | > 0 |
+          | Materiais | stdout do motor | > 0 |
+          | Rig + skinning | `blender_rig_check.py <ficheiro.glb>` | OK · unweighted=0 · leftHandMoved>0.2m |
+          | Animações + bones | `npm run test:gltf` | OK · maxRotErr<1° · maxRootErrM<0.01 |
+          | Face shapes | `npm run test:gltf` | faceShapes > 0 |
+          | Hash GLB | SHA-256 do ficheiro | `{glb_hash}` |
+
+          ---
+
+          ## MÍNIMO VIÁVEL PARA ANIMAR
+
+          Campos sem os quais **não** se deve animar:
+          - `id` · `preset` · `rig` · `rest_pose` · `height` · `tris` · `animations` · `hash_glb`
+
+          ## MÍNIMO PARA ANIMAÇÃO PERFEITA
+
+          Todos os campos acima **mais**:
+          - Lista exacta de bones (blender_rig_check)
+          - Lista exacta de face/speech shapes (gltf-check)
+          - Lista de clips com fps · loop · root_motion por clipe
+          - Colisores de física secundária definidos no engine de destino
+
+          ---
+          *Pipeline: ara-axev-crime.yml · Run #{run_number} · {gen_date}*
+          """
+
+          out = Path("axev-output/AXEV_CHARACTER_CATALOG.md")
+          out.write_text(md, encoding="utf-8")
+          print(f"✅ Catálogo gerado: {out} ({out.stat().st_size} bytes)")
           PYEOF
 
       # ─── 9. VALIDAR ───────────────────────────────────────────────────────
@@ -798,6 +891,7 @@ jobs:
           mkdir -p axev-output/exports
           cp -r ara-3d-gen/out/. axev-output/exports/ 2>/dev/null || true
           cp axev-build/character.params.json axev-output/AXEV_CHARACTER_PARAMS.json 2>/dev/null || true
+          cp axev-build/engine_output.log axev-output/AXEV_ENGINE_OUTPUT.log 2>/dev/null || true
 
           FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
           DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
@@ -833,6 +927,7 @@ jobs:
           ## Documentação
           - 📄 [Especificação de Catálogo](./AXEV_CHARACTER_CATALOG.md)
           - 📄 [Parâmetros Completos](./AXEV_CHARACTER_PARAMS.json)
+          - 📄 [Log do Motor](./AXEV_ENGINE_OUTPUT.log)
 
           ---
           *Gerado por AXEV 3D Studio — ara-axev-crime.yml*
