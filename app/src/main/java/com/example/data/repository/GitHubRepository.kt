@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.data.api.CreateFileRequest
 import com.example.data.api.CreateRepoRequest
+import com.example.data.api.GeneratedFile
 import com.example.data.api.GitHubApi
 import com.example.data.api.GitHubRepo
 import com.example.data.api.GitHubUser
@@ -492,6 +493,56 @@ class GitHubRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "getWorkflowRuns: exception — ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    // ── Artifacts ─────────────────────────────────────────────────────────────
+
+    /**
+     * Busca os artifacts de um workflow run e converte-os em [GeneratedFile].
+     * Chamado por MainViewModel.loadArtifactGroups() para construir o ecrã de downloads.
+     */
+    suspend fun getArtifactsForRun(
+        token: String,
+        repoFullName: String,
+        runId: Long
+    ): List<GeneratedFile> {
+        val parts = repoFullName.split("/")
+        if (parts.size != 2) {
+            Log.e(TAG, "getArtifactsForRun: invalid repoFullName='$repoFullName'")
+            return emptyList()
+        }
+        val owner  = parts[0]
+        val repo   = parts[1]
+        val bearer = resolveToken() ?: token.asBearerToken()
+
+        return try {
+            val response = api.getArtifacts(bearer, owner, repo, runId)
+            if (response.isSuccessful) {
+                val artifacts = response.body()?.artifacts ?: emptyList()
+                Log.i(TAG, "getArtifactsForRun: run=$runId → ${artifacts.size} artifact(s)")
+                artifacts
+                    .filter { !it.name.endsWith("-logs", ignoreCase = true) }
+                    .map { artifact ->
+                        val ext = artifact.name
+                            .substringAfterLast(".", "")
+                            .lowercase()
+                            .ifEmpty { "zip" }
+                        GeneratedFile(
+                            name        = artifact.name,
+                            extension   = ext,
+                            sizeBytes   = artifact.size_in_bytes,
+                            downloadUrl = artifact.archive_download_url,
+                            artifactId  = artifact.id
+                        )
+                    }
+            } else {
+                Log.e(TAG, "getArtifactsForRun: HTTP ${response.code()} for run=$runId — ${response.errorBody()?.string()}")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getArtifactsForRun: exception for run=$runId — ${e.message}", e)
             emptyList()
         }
     }
