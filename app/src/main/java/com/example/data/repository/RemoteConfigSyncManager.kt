@@ -27,13 +27,13 @@ private const val TAG = "AXEV/SyncManager"
  *   // Observar workflows em tempo real:
  *   syncManager.workflowConfig.collect { config -> ... }
  *
- *   // Estado de sincronização (idle / syncing / success / error):
+ *   // Estado de sincronização:
  *   syncManager.syncState.collect { state -> ... }
  *
  *   // Botão "Sincronizar":
  *   syncManager.syncNow()
  *
- *   // Parar quando a app vai para background (opcional):
+ *   // Parar quando necessário:
  *   syncManager.stop()
  */
 class RemoteConfigSyncManager(
@@ -43,8 +43,8 @@ class RemoteConfigSyncManager(
 
     // ── Repositórios ──────────────────────────────────────────────────────────
 
-    private val flagsRepo          = FlagsRepository(context)
-    private val remoteConfigRepo   = RemoteConfigRepository(context)
+    private val flagsRepo        = FlagsRepository(context)
+    private val remoteConfigRepo = RemoteConfigRepository(context)
 
     // ── Scope de coroutines ───────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ class RemoteConfigSyncManager(
         object Idle    : SyncState()
         object Syncing : SyncState()
         data class Success(val timestampMs: Long = System.currentTimeMillis()) : SyncState()
-        data class Error(val message: String)   : SyncState()
+        data class Error(val message: String) : SyncState()
     }
 
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -117,9 +117,9 @@ class RemoteConfigSyncManager(
         Log.d(TAG, "doSync: a sincronizar…")
 
         try {
-            // Flags e workflow-config em paralelo
+            // Flags e workflow-config em paralelo para ser mais rápido
             val flagsDeferred  = scope.async { flagsRepo.load() }
-            val configDeferred = scope.async { fetchWorkflowConfig() }
+            val configDeferred = scope.async { remoteConfigRepo.fetchConfig() }
 
             val newFlags  = flagsDeferred.await()
             val newConfig = configDeferred.await()
@@ -135,18 +135,6 @@ class RemoteConfigSyncManager(
             _syncState.value = SyncState.Error(e.message ?: "Erro desconhecido")
         } finally {
             isSyncing = false
-        }
-    }
-
-    private suspend fun fetchWorkflowConfig(): RemoteConfigRepository.RemoteConfig? {
-        return try {
-            // Reutiliza o fetch interno via reflexão do campo privado não é possível,
-            // por isso chamamos fetchAllWorkflows que é público e devolve os YAMLs.
-            // Para o config (metadados), usamos fetchWorkflowIfNewer como proxy.
-            // Se quiseres expor fetchConfig como internal, faz-o no RemoteConfigRepository.
-            null  // placeholder — ver nota abaixo
-        } catch (e: Exception) {
-            null
         }
     }
 
