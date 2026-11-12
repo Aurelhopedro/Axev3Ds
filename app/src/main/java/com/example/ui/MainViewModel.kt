@@ -153,6 +153,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _downloadStates = MutableStateFlow<Map<Long, DownloadStatus>>(emptyMap())
     val downloadStates: StateFlow<Map<Long, DownloadStatus>> = _downloadStates.asStateFlow()
 
+    // ── Artifact Groups (para DownloadManagerScreen) ──────────────────────────
+    private val _artifactGroups = MutableStateFlow<List<ArtifactGroup>>(emptyList())
+    val artifactGroups: StateFlow<List<ArtifactGroup>> = _artifactGroups.asStateFlow()
+
+    private val _isLoadingArtifacts = MutableStateFlow(false)
+    val isLoadingArtifacts: StateFlow<Boolean> = _isLoadingArtifacts.asStateFlow()
+
     // ── Feature flags (sincronizadas via SyncManager) ─────────────────────────
     private val _flags = MutableStateFlow(AppFlags())
     val flags: StateFlow<AppFlags> = _flags.asStateFlow()
@@ -427,6 +434,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _user.value                = null
             _repos.value               = emptyList()
             _workflowRuns.value        = emptyList()
+            _artifactGroups.value      = emptyList()
             _workflowOptions.value     = DynamicWorkflowOptions()
             _flags.value               = AppFlags()
             _authState.value           = AuthState.Idle
@@ -454,6 +462,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val bearer = repository.resolveToken() ?: return@launch
             _workflowRuns.value = repository.getWorkflowRuns(bearer, r)
+        }
+    }
+
+    // ── Carregar grupos de artifacts (DownloadManagerScreen) ──────────────────
+
+    fun loadArtifactGroups() {
+        val r = selectedRepo.value ?: return
+        viewModelScope.launch {
+            _isLoadingArtifacts.value = true
+            try {
+                if (token.value == "123456789") {
+                    // Demo mode — dados simulados
+                    val demoFiles = listOf(
+                        GeneratedFile("soldier_01.glb", "glb", 19_267_584L, "https://github.com/demo", 1001L),
+                        GeneratedFile("soldier_01.fbx", "fbx", 25_296_896L, "https://github.com/demo", 1002L)
+                    )
+                    val demoRun = WorkflowRun(1001, "ARA 3D GEN - SOLDIER-01", "completed", "success",
+                        "2026-11-09T10:00:00Z", "2026-11-09T10:05:00Z", "")
+                    _artifactGroups.value = listOf(ArtifactGroup(demoRun, demoFiles))
+                    return@launch
+                }
+
+                val bearer = repository.resolveToken() ?: return@launch
+                val runs = repository.getWorkflowRuns(bearer, r)
+
+                val groups = runs
+                    .filter { it.conclusion == "success" }
+                    .mapNotNull { run ->
+                        val files = repository.getArtifactsForRun(bearer, r, run.id)
+                        if (files.isNotEmpty()) ArtifactGroup(run, files) else null
+                    }
+
+                _artifactGroups.value = groups
+            } catch (e: Exception) {
+                Log.e(TAG, "loadArtifactGroups: error — ${e.message}")
+                _artifactGroups.value = emptyList()
+            } finally {
+                _isLoadingArtifacts.value = false
+            }
         }
     }
 
