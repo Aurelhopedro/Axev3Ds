@@ -38,7 +38,7 @@ class RemoteConfigRepository(private val context: Context) {
         token: String? = null
     ): String? = withContext(Dispatchers.IO) {
         try {
-            val config = fetchConfig(token) ?: run {
+            val config = fetchConfigInternal(token) ?: run {
                 Log.w(TAG, "fetchWorkflowIfNewer: could not fetch config manifest")
                 return@withContext null
             }
@@ -74,7 +74,7 @@ class RemoteConfigRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             val result = mutableMapOf<String, String>()
             try {
-                val config = fetchConfig(token) ?: return@withContext result
+                val config = fetchConfigInternal(token) ?: return@withContext result
                 for (wf in config.workflows) {
                     val yaml = fetchWorkflowContent(wf.filename, token)
                     if (yaml != null) {
@@ -90,7 +90,13 @@ class RemoteConfigRepository(private val context: Context) {
             result
         }
 
-    private fun fetchConfig(token: String?): RemoteConfig? {
+    /**
+     * Exposto como internal para ser usado pelo RemoteConfigSyncManager.
+     */
+    internal suspend fun fetchConfig(token: String? = null): RemoteConfig? =
+        withContext(Dispatchers.IO) { fetchConfigInternal(token) }
+
+    private fun fetchConfigInternal(token: String?): RemoteConfig? {
         val url = "$RAW_BASE/$CONFIG_FILE"
         Log.d(TAG, "fetchConfig: GET $url")
         return try {
