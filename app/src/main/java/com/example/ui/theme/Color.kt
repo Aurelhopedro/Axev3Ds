@@ -2,47 +2,62 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── Cor principal — laranja tático ──────────────────────────────────────────
-val TacticalOrange      = Color(0xFFFF6B00)
+// ── Paleta "Monge + Vibrante" (dark suave) ────────────────────────────────
+val AppBackground       = Color(0xFF12151C)   // fundo principal
+val CardSurface         = Color(0xFF1C202A)   // cards/painéis
+val CardSurfaceElevated = Color(0xFF232836)   // superfície elevada
+val SurfaceHighlight    = Color(0xFF2A3142)
+
+// ── Ações e estados ──────────────────────────────────────────────────────
+val PrimaryOrange       = Color(0xFFFF7A00)   // ação principal
+val PrimaryOrangeEnd    = Color(0xFFFF5E00)   // gradiente do CTA
+val PrimaryGlow         = Color(0x33FF7A00)
+
+val MintSuccess         = Color(0xFF00E5A0)   // sucesso/calma
+val MintGlow            = Color(0x2200E5A0)
+
+val SoftError           = Color(0xFFFF4D4D)
+val SoftErrorDark       = Color(0xFFD93D3D)
+val SoftErrorGlow       = Color(0x22FF4D4D)
+
+val PendingAmber        = Color(0xFFE0B35A)   // pendente neutro/amarelado
+val WarningGlow         = Color(0x22E0B35A)
+
+// ── Texto ────────────────────────────────────────────────────────────────
+val TextPrimary         = Color(0xFFF0F2F5)
+val TextSecondary       = Color(0xFF8B93A1)
+val TextMuted           = Color(0xFF5C6475)
+
+// ── Bordas/divisores sutis ───────────────────────────────────────────────
+val BorderSubtle        = Color(0x1AFFFFFF)
+val BorderSoft          = Color(0x263A4256)
+
+// ── Aliases de compatibilidade (código existente) ────────────────────────
+val TacticalOrange      = PrimaryOrange
 val TacticalOrangeLight = Color(0xFFFF9A4D)
-val TacticalOrangeDark  = Color(0xFFCC5500)
-val TacticalOrangeGlow  = Color(0x33FF6B00)   // para efeito brilho/glow
+val TacticalOrangeDark  = Color(0xFFCC6200)
+val TacticalOrangeGlow  = PrimaryGlow
 
-// ── Fundos premium (escuro profundo) ────────────────────────────────────────
-val PremiumDark         = Color(0xFF0A0A0F)   // fundo principal — quase preto
-val SurfaceDark         = Color(0xFF13131A)   // cards base
-val SurfaceElevated     = Color(0xFF1C1C27)   // cards elevados
-val SurfaceHighlight    = Color(0xFF24243A)   // cards em destaque
+val PremiumDark         = AppBackground
+val SurfaceDark         = CardSurface
+val SurfaceElevated     = CardSurfaceElevated
 
-// ── Bordas e divisores ───────────────────────────────────────────────────────
-val BorderSubtle        = Color(0xFF2A2A3A)
-val BorderAccent        = Color(0xFF3A3A5A)
-val BorderOrange        = Color(0x66FF6B00)   // borda laranja semitransparente
+val BorderAccent        = BorderSoft
+val BorderOrange        = Color(0x66FF7A00)
 
-// ── Texto ────────────────────────────────────────────────────────────────────
-val TextPrimary         = Color(0xFFF0F0F0)
-val TextSecondary       = Color(0xFF8A8AA0)
-val TextMuted           = Color(0xFF55556A)
+val SuccessGreen        = MintSuccess
+val SuccessGreenDark    = Color(0xFF00B880)
+val SuccessGlow         = MintGlow
+val ErrorRed            = SoftError
+val ErrorRedDark        = SoftErrorDark
+val ErrorGlow           = SoftErrorGlow
+val WarningAmber        = PendingAmber
 
-// ── Estados ──────────────────────────────────────────────────────────────────
-val SuccessGreen        = Color(0xFF00E676)
-val SuccessGreenDark    = Color(0xFF00C853)
-val SuccessGlow         = Color(0x2200E676)
-val ErrorRed            = Color(0xFFFF3D57)
-val ErrorRedDark        = Color(0xFFD50000)
-val ErrorGlow           = Color(0x22FF3D57)
-val WarningAmber        = Color(0xFFFFAB00)
-val WarningGlow         = Color(0x22FFAB00)
+val NeonCyan            = MintSuccess
+val NeonCyanGlow        = MintGlow
 
-// ── Neon accent (para highlights especiais) ──────────────────────────────────
-val NeonCyan            = Color(0xFF00E5FF)
-val NeonCyanGlow        = Color(0x1100E5FF)
+val GradientStart       = PrimaryOrange
+val GradientMid         = PrimaryOrangeEnd
+val GradientEnd         = Color(0xFFFF8A3D)
 
-// ── Gradientes (usar com Brush.linearGradient) ───────────────────────────────
-// Exemplo: Brush.linearGradient(listOf(GradientStart, GradientEnd))
-val GradientStart       = Color(0xFFFF6B00)
-val GradientMid         = Color(0xFFFF3D57)
-val GradientEnd         = Color(0xFFCC00FF)
-
-// Legacy aliases (compatibilidade com código existente)
 val Amber               = WarningAmber
