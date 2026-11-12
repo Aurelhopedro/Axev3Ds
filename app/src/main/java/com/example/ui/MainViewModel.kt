@@ -18,6 +18,7 @@ import com.example.data.repository.GenerationRepository.DownloadStatus
 import com.example.data.repository.GenerationRepository.GenerationStatus
 import com.example.data.repository.GitHubRepository
 import com.example.data.repository.RemoteConfigRepository
+import com.example.data.repository.RemoteConfigSyncManager
 import com.example.data.repository.RepoCreationResult
 import com.example.data.repository.WorkflowOptionsRepository
 import com.example.data.repository.WorkflowOptionsRepository.DynamicWorkflowOptions
@@ -98,6 +99,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val remoteConfig      = RemoteConfigRepository(application)
     private val flagsRepository   = FlagsRepository(application)
 
+    // ── Sync Manager (Opção C: polling automático + botão manual) ─────────────
+    private val syncManager = RemoteConfigSyncManager(
+        context         = application,
+        pollIntervalMs  = 5 * 60 * 1000L   // polling a cada 5 minutos
+    )
+
+    /** Estado da sincronização — para mostrar loading/ok/erro no botão */
+    val syncState: StateFlow<RemoteConfigSyncManager.SyncState> = syncManager.syncState
+
     val token: StateFlow<String?> = repository.tokenFlow
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
@@ -143,7 +153,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _downloadStates = MutableStateFlow<Map<Long, DownloadStatus>>(emptyMap())
     val downloadStates: StateFlow<Map<Long, DownloadStatus>> = _downloadStates.asStateFlow()
 
-    // ── Feature flags ─────────────────────────────────────────────────────────
+    // ── Feature flags (sincronizadas via SyncManager) ─────────────────────────
     private val _flags = MutableStateFlow(AppFlags())
     val flags: StateFlow<AppFlags> = _flags.asStateFlow()
 
@@ -152,20 +162,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var generationJob: Job? = null
 
     init {
+        // Iniciar polling automático da config remota
+        syncManager.start()
+
+        // Propagar flags do SyncManager para _flags sempre que mudarem
+        viewModelScope.launch {
+            syncManager.flags.collect { remoteFlags ->
+                if (remoteFlags != null) {
+                    _flags.value = remoteFlags
+                    Log.i(TAG, "flags updated via SyncManager: maintenance=${remoteFlags.maintenanceMode}")
+                }
+            }
+        }
+
         if (authRepository.isAuthenticated()) {
             _authState.value = AuthState.Authenticated
             viewModelScope.launch {
                 refreshUserData()
-                loadFlags()
                 loadWorkflowOptions()
             }
-        } else {
-            // Carregar flags mesmo sem autenticação (manutenção, versão mínima, etc.)
-            viewModelScope.launch { loadFlags() }
         }
     }
 
-    // ── Feature Flags ─────────────────────────────────────────────────────────
+    // ── Sincronização manual (botão "Sincronizar") ────────────────────────────
+
+    /**
+     * Força uma sincronização imediata da config remota.
+     * Chama este método ao clicar no botão "Sincronizar" na UI.
+     */
+    fun syncNow() {
+        syncManager.syncNow()
+    }
+
+    // ── Feature Flags (mantido por compatibilidade) ───────────────────────────
 
     fun loadFlags() {
         viewModelScope.launch {
@@ -227,7 +256,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.value = UiState.Loading
 
-            // Verificar flag demo_mode_enabled
             if (sanitizedToken == "123456789" && !_flags.value.demoModeEnabled) {
                 _uiState.value = UiState.Error("Demo mode is not available")
                 return@launch
@@ -392,6 +420,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         pollingJob?.cancel()
         generationJob?.cancel()
+        syncManager.stop()
         viewModelScope.launch {
             repository.clearSession()
             authRepository.logout()
@@ -447,7 +476,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // Verificar flag de manutenção
         val currentFlags = _flags.value
         if (currentFlags.maintenanceMode) {
             val msg = currentFlags.maintenanceMessage.ifBlank { "The service is under maintenance. Please try again later." }
@@ -470,7 +498,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val config = _currentCharacter.value
             Log.i(TAG, "generate: starting for character_id=${config.id} in $r")
 
-            // ── REMOTE CONFIG: verificar se há workflow mais recente ───────────
             Log.d(TAG, "generate: checking remote config for workflow updates")
             val remoteYaml = remoteConfig.fetchWorkflowIfNewer(
                 workflowFilename = WorkflowTemplates.WORKFLOW_GENERATE,
@@ -482,9 +509,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 Log.d(TAG, "generate: local workflow is up to date — no update needed")
             }
-            // ─────────────────────────────────────────────────────────────────
 
-            // Aplicar quality máxima da flag
             val effectiveConfig = if (currentFlags.maxQuality != "high" && config.quality == "high") {
                 Log.w(TAG, "generate: quality capped to '${currentFlags.maxQuality}' by remote flag")
                 config.copy(quality = currentFlags.maxQuality)
@@ -504,12 +529,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchWorkflowRuns(t, r)
 
             val characterId = config.id
-            // Usar timeout e poll interval das flags
             generationRepo.pollUntilReady(
-                repoFullName  = r,
-                characterId   = characterId,
-                dispatchedAt  = lastDispatchedAt,
-                quality       = effectiveConfig.quality,
+                repoFullName   = r,
+                characterId    = characterId,
+                dispatchedAt   = lastDispatchedAt,
+                quality        = effectiveConfig.quality,
                 pollIntervalMs = currentFlags.pollIntervalSeconds * 1000L,
                 timeoutMs      = currentFlags.generationTimeoutMinutes * 60 * 1000L
             ).collect { status -> _generationStatus.value = status }
@@ -526,7 +550,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Download de artifact ──────────────────────────────────────────────────
 
     fun downloadFile(file: GeneratedFile) {
-        // Verificar flag de download
         if (!_flags.value.downloadEnabled) {
             viewModelScope.launch {
                 _downloadStates.value = _downloadStates.value +
@@ -569,8 +592,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(1200)
         }
         val demoFiles = listOf(
-            GeneratedFile("soldier_01.glb",  "glb", 19_267_584L, "https://github.com/demo", 1001L),
-            GeneratedFile("soldier_01.fbx",  "fbx", 25_296_896L, "https://github.com/demo", 1002L)
+            GeneratedFile("soldier_01.glb", "glb", 19_267_584L, "https://github.com/demo", 1001L),
+            GeneratedFile("soldier_01.fbx", "fbx", 25_296_896L, "https://github.com/demo", 1002L)
         )
         _generationStatus.value = GenerationStatus.Ready(demoFiles)
         _uiState.value = UiState.Success("Demo generation complete")
@@ -580,7 +603,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Smoke Test ────────────────────────────────────────────────────────────
 
     fun runSmokeTest() {
-        // Verificar flag smoke_test_enabled
         if (!_flags.value.smokeTestEnabled) {
             _smokeTestState.value = SmokeTestState.Failed("Smoke test is currently disabled")
             return
@@ -613,5 +635,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetSmokeTestState() {
         _smokeTestState.value = SmokeTestState.Idle
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        syncManager.destroy()
     }
 }
