@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.api.WorkflowRun
+import com.example.data.repository.RemoteConfigSyncManager
 import com.example.ui.MainViewModel
 import com.example.ui.SmokeTestState
 import com.example.ui.components.SectionHeader
@@ -48,6 +50,7 @@ fun DashboardScreen(
     val smokeState     by viewModel.smokeTestState.collectAsState()
     val workflowOpts   by viewModel.workflowOptions.collectAsState()
     val flags          by viewModel.flags.collectAsState()
+    val syncState      by viewModel.syncState.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     var visible by remember { mutableStateOf(false) }
@@ -99,15 +102,17 @@ fun DashboardScreen(
             // ── Cabeçalho ─────────────────────────────────────────────────
             item {
                 UserHeader(
-                    user      = user,
-                    repo      = repo,
-                    isLive    = workflowOpts.isLive,
-                    onRefresh = {
+                    user       = user,
+                    repo       = repo,
+                    isLive     = workflowOpts.isLive,
+                    syncState  = syncState,
+                    onRefresh  = {
                         viewModel.fetchWorkflowRuns()
                         viewModel.loadWorkflowOptions()
                         viewModel.loadFlags()
                     },
-                    onLogout  = { showLogoutDialog = true }
+                    onSync     = { viewModel.syncNow() },
+                    onLogout   = { showLogoutDialog = true }
                 )
             }
 
@@ -336,9 +341,28 @@ fun UserHeader(
     user: com.example.data.api.GitHubUser?,
     repo: String?,
     isLive: Boolean = false,
+    syncState: RemoteConfigSyncManager.SyncState = RemoteConfigSyncManager.SyncState.Idle,
     onRefresh: () -> Unit,
+    onSync: () -> Unit,
     onLogout: () -> Unit
 ) {
+    // Animação de rotação quando está a sincronizar
+    val infiniteTransition = rememberInfiniteTransition(label = "sync")
+    val syncRotation by infiniteTransition.animateFloat(
+        initialValue  = 0f,
+        targetValue   = 360f,
+        animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing)),
+        label         = "syncRotation"
+    )
+    val isSyncing = syncState is RemoteConfigSyncManager.SyncState.Syncing
+
+    val syncIconColor = when (syncState) {
+        is RemoteConfigSyncManager.SyncState.Syncing -> TacticalOrange
+        is RemoteConfigSyncManager.SyncState.Success -> SuccessGreen
+        is RemoteConfigSyncManager.SyncState.Error   -> ErrorRed
+        else                                         -> TextSecondary
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth().border(1.dp, BorderSubtle, RoundedCornerShape(20.dp)),
         shape  = RoundedCornerShape(20.dp),
@@ -365,6 +389,15 @@ fun UserHeader(
                         Text("LIVE", style = MaterialTheme.typography.labelSmall, color = SuccessGreen, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
                 }
+            }
+            // Botão Sincronizar config remota
+            IconButton(onClick = onSync, enabled = !isSyncing) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = "Sincronizar config",
+                    tint = syncIconColor,
+                    modifier = if (isSyncing) Modifier.rotate(syncRotation) else Modifier
+                )
             }
             IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, tint = TextSecondary) }
             IconButton(onClick = onLogout) { Icon(Icons.Default.Logout, null, tint = TextMuted) }
