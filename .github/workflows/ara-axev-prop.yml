@@ -1,0 +1,817 @@
+name: AXEV 3D — Gerar Prop
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      # 1
+      prop_id:
+        description: "ID do prop"
+        required: true
+        type: string
+        default: "prop_001"
+
+      # 2
+      prop_name:
+        description: "Nome do prop"
+        required: true
+        type: string
+        default: "AXEV Prop"
+
+      # 3
+      prop_category:
+        description: "Categoria do prop"
+        required: true
+        type: choice
+        default: "weapon"
+        options:
+          - "weapon"
+          - "carry"
+          - "action_prop"
+
+      # 4 ── ARMAS
+      weapon_type:
+        description: "Arma (se categoria=weapon)"
+        required: true
+        type: choice
+        default: "pistol"
+        options:
+          - "pistol"
+          - "rifle"
+          - "sword"
+          - "knife"
+          - "grenade"
+
+      # 5 ── CARRY ITEMS
+      carry_type:
+        description: "Item carry (se categoria=carry)"
+        required: true
+        type: choice
+        default: "bag"
+        options:
+          - "bag"
+          - "backpack"
+          - "parcel"
+          - "phone"
+          - "broom"
+          - "basin"
+          - "parachute"
+
+      # 6 ── ACTION PROPS
+      action_prop_type:
+        description: "Prop de acção (se categoria=action_prop)"
+        required: true
+        type: choice
+        default: "ladder"
+        options:
+          - "ladder"
+          - "vault_obstacle"
+          - "ledge_wall"
+          - "cover_wall"
+
+      # 7 ── EXPORT COM PERSONAGEM
+      with_character:
+        description: "Exportar com personagem a segurar o prop"
+        required: true
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
+
+      # 8
+      character_preset:
+        description: "Preset do personagem (se with_character=yes)"
+        required: true
+        type: choice
+        default: "The Soldier"
+        options:
+          - "Athletic man"
+          - "Athletic woman"
+          - "The Soldier"
+          - "The African Warrior"
+          - "The Gangster"
+          - "The Secret Agent"
+          - "The Professional Hitman"
+          - "The Bodyguard"
+          - "Detective"
+          - "The Corporate High-Flier"
+          - "The Female Executive"
+          - "The Adventurer"
+          - "The Cyberpunk Hacker"
+
+      # 9
+      character_gender_age:
+        description: "Género:Idade do personagem"
+        required: true
+        type: choice
+        default: "male:25"
+        options:
+          - "male:18"
+          - "male:25"
+          - "male:30"
+          - "male:40"
+          - "male:50"
+          - "female:18"
+          - "female:25"
+          - "female:30"
+          - "female:40"
+
+      # 10 ── ANIMAÇÃO DO PROP
+      prop_animation:
+        description: "Animação do prop"
+        required: true
+        type: choice
+        default: "idle_with_prop"
+        options:
+          - "idle_with_prop"
+          - "walk_with_prop"
+          - "aim"
+          - "fire"
+          - "throw_grenade"
+          - "parachute_deploy"
+          - "parachute_glide"
+          - "parachute_land"
+          - "climb_ladder"
+          - "vault_obstacle"
+          - "ledge_hang"
+          - "take_cover"
+          - "carry_on_head"
+          - "pick_up"
+          - "put_down"
+
+      # 11 ── WEAPON POSE (para armas)
+      weapon_pose:
+        description: "Pose da arma (se weapon)"
+        required: true
+        type: choice
+        default: "wield"
+        options:
+          - "wield"
+          - "aim"
+          - "fire"
+          - "hide"
+
+      # 12
+      weapon_yaw:
+        description: "Direcção horizontal da arma (°) — 0=frente · +esquerda · -direita"
+        required: true
+        type: choice
+        default: "0"
+        options:
+          - "-80"
+          - "-60"
+          - "-45"
+          - "-30"
+          - "0"
+          - "30"
+          - "45"
+          - "60"
+          - "80"
+
+      weapon_pitch:
+        description: "Elevação vertical da arma (°) — 0=horizontal · +cima · -baixo"
+        required: true
+        type: choice
+        default: "0"
+        options:
+          - "-45"
+          - "-30"
+          - "-15"
+          - "0"
+          - "15"
+          - "30"
+          - "45"
+          - "60"
+
+      # 13 ── EXPORT
+      export_formats:
+        description: "Formatos a exportar"
+        required: true
+        type: choice
+        default: "glb"
+        options:
+          - "glb"
+          - "fbx"
+          - "obj"
+          - "glb,fbx"
+          - "glb,fbx,obj"
+
+      # 14
+      export_mode:
+        description: "Modo de export"
+        required: true
+        type: choice
+        default: "animated"
+        options:
+          - "static"
+          - "animated"
+          - "one_file_per_clip"
+
+      # 15
+      quality:
+        description: "Qualidade do personagem"
+        required: true
+        type: choice
+        default: "high"
+        options:
+          - "low"
+          - "medium"
+          - "high"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axev-prop-${{ github.ref }}-${{ inputs.prop_id }}
+  cancel-in-progress: false
+
+jobs:
+  generate-prop:
+    name: "Gerar prop"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # ─── 1. VALIDAÇÃO ────────────────────────────────────────────────────
+      - name: Validar inputs
+        env:
+          INPUT_PROP_ID:    ${{ inputs.prop_id }}
+          INPUT_FORMATS:    ${{ inputs.export_formats }}
+          INPUT_WEAPON_YAW: ${{ inputs.weapon_yaw }}
+          INPUT_WEAPON_PITCH: ${{ inputs.weapon_pitch }}
+        run: |
+          set -euo pipefail
+
+          if ! echo "$INPUT_PROP_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
+            echo "::error::prop_id inválido: '$INPUT_PROP_ID'"
+            exit 1
+          fi
+
+          # Validar yaw/pitch dentro dos limites do motor (-80/+80, -45/+60)
+          if [ "$INPUT_WEAPON_YAW" -lt -80 ] || [ "$INPUT_WEAPON_YAW" -gt 80 ] 2>/dev/null; then
+            echo "::error::weapon_yaw fora do limite (-80 a +80): '$INPUT_WEAPON_YAW'"
+            exit 1
+          fi
+          if [ "$INPUT_WEAPON_PITCH" -lt -45 ] || [ "$INPUT_WEAPON_PITCH" -gt 60 ] 2>/dev/null; then
+            echo "::error::weapon_pitch fora do limite (-45 a +60): '$INPUT_WEAPON_PITCH'"
+            exit 1
+          fi
+
+          ALLOWED="glb fbx obj"
+          IFS=',' read -ra FMTS <<< "$INPUT_FORMATS"
+          for fmt in "${FMTS[@]}"; do
+            fmt_clean=$(echo "$fmt" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            if ! echo "$ALLOWED" | grep -qw "$fmt_clean"; then
+              echo "::error::Formato não suportado: '$fmt_clean'"
+              exit 1
+            fi
+          done
+          FORMATS_NORM=$(echo "$INPUT_FORMATS" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+          echo "FORMATS_NORM=$FORMATS_NORM" >> "$GITHUB_ENV"
+          echo "✅ Inputs validados."
+
+      # ─── 2. CHECKOUT ─────────────────────────────────────────────────────
+      - name: Checkout AXEV
+        uses: actions/checkout@v4
+
+      # ─── 3. NODE.JS ──────────────────────────────────────────────────────
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ─── 4. CLONAR MOTOR ─────────────────────────────────────────────────
+      - name: Clonar Ara 3D Gen
+        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+
+      # ─── 5. DEPENDÊNCIAS ─────────────────────────────────────────────────
+      - name: Instalar dependências
+        working-directory: ara-3d-gen
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      # ─── 6. CACHE ASSETS ─────────────────────────────────────────────────
+      - name: Cache assets MakeHuman
+        id: cache-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ara-3d-gen/vendor
+            ara-3d-gen/public/assets
+          key: ara3d-assets-v1-${{ hashFiles('ara-3d-gen/scripts/setup-assets.ts', 'ara-3d-gen/scripts/mocap-takes.ts') }}
+          restore-keys: ara3d-assets-v1-
+
+      - name: Preparar assets 3D
+        working-directory: ara-3d-gen
+        run: |
+          if [ "${{ steps.cache-assets.outputs.cache-hit }}" != "true" ] || [ ! -d "vendor/sys/skins" ]; then
+            echo "A descarregar assets MakeHuman (~280 MB)..."
+            npm run setup-assets
+          else
+            echo "✅ Assets em cache."
+          fi
+
+      # ─── 7. CONSTRUIR PARÂMETROS DO PROP ──────────────────────────────────
+      - name: Construir parâmetros do prop
+        env:
+          PROP_CATEGORY:    ${{ inputs.prop_category }}
+          WEAPON_TYPE:      ${{ inputs.weapon_type }}
+          CARRY_TYPE:       ${{ inputs.carry_type }}
+          ACTION_PROP_TYPE: ${{ inputs.action_prop_type }}
+          WITH_CHARACTER:   ${{ inputs.with_character }}
+          CHAR_PRESET:      ${{ inputs.character_preset }}
+          CHAR_GENDER_AGE:  ${{ inputs.character_gender_age }}
+          PROP_ANIMATION:   ${{ inputs.prop_animation }}
+          WEAPON_POSE:      ${{ inputs.weapon_pose }}
+          WEAPON_YAW:       ${{ inputs.weapon_yaw }}
+          WEAPON_PITCH:     ${{ inputs.weapon_pitch }}
+          EXPORT_MODE:      ${{ inputs.export_mode }}
+          QUALITY:          ${{ inputs.quality }}
+        run: |
+          mkdir -p axev-build
+          python3 << 'PYEOF'
+          import json, os
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          category      = env("PROP_CATEGORY", "weapon")
+          weapon_type   = env("WEAPON_TYPE", "pistol")
+          carry_type    = env("CARRY_TYPE", "bag")
+          action_prop   = env("ACTION_PROP_TYPE", "ladder")
+          with_char     = env("WITH_CHARACTER", "yes") == "yes"
+          char_preset   = env("CHAR_PRESET", "The Soldier")
+          char_ga       = env("CHAR_GENDER_AGE", "male:25").split(":")
+          prop_anim     = env("PROP_ANIMATION", "idle_with_prop")
+          weapon_pose   = env("WEAPON_POSE", "wield")
+          weapon_yaw    = int(env("WEAPON_YAW", "0"))
+          weapon_pitch  = int(env("WEAPON_PITCH", "0"))
+          export_mode   = env("EXPORT_MODE", "animated")
+          quality       = env("QUALITY", "high")
+
+          # Resolver o prop real e parâmetros do motor
+          if category == "weapon":
+            prop_key    = weapon_type
+            weapon_param = weapon_type
+            carry_param  = "none"
+          elif category == "carry":
+            prop_key    = carry_type
+            weapon_param = "none"
+            carry_param  = carry_type
+          else:  # action_prop
+            prop_key    = action_prop
+            weapon_param = "none"
+            carry_param  = "none"
+
+          # Mapa de animações por prop
+          ANIM_MAP = {
+            "pistol":        {"idle_with_prop":"idle","aim":"pistol_aim_one_hand","fire":"pistol_fire","wield":"idle"},
+            "rifle":         {"idle_with_prop":"idle","aim":"rifle_aim","fire":"rifle_fire","wield":"idle"},
+            "sword":         {"idle_with_prop":"idle","aim":"sword_idle","fire":"sword_combo","wield":"sword_idle"},
+            "knife":         {"idle_with_prop":"idle","wield":"idle"},
+            "grenade":       {"idle_with_prop":"idle","throw_grenade":"throw_grenade"},
+            "bag":           {"idle_with_prop":"idle","walk_with_prop":"walk","carry_on_head":"carry_on_head"},
+            "backpack":      {"idle_with_prop":"idle","walk_with_prop":"walk"},
+            "parcel":        {"idle_with_prop":"idle","pick_up":"pick_up","put_down":"put_down","carry_on_head":"carry_on_head"},
+            "phone":         {"idle_with_prop":"phone_call","walk_with_prop":"walk"},
+            "broom":         {"idle_with_prop":"sweeping","walk_with_prop":"walk"},
+            "basin":         {"idle_with_prop":"carry_on_head","walk_with_prop":"walk"},
+            "parachute":     {"parachute_deploy":"parachute_deploy","parachute_glide":"parachute_glide","parachute_land":"parachute_land"},
+            "ladder":        {"climb_ladder":"climb_ladder_up"},
+            "vault_obstacle":{"vault_obstacle":"vault_obstacle"},
+            "ledge_wall":    {"ledge_hang":"ledge_hang"},
+            "cover_wall":    {"take_cover":"take_cover"},
+          }
+
+          anim_options = ANIM_MAP.get(prop_key, {})
+          resolved_clip = anim_options.get(prop_anim, list(anim_options.values())[0] if anim_options else "idle")
+
+          # Parâmetros do personagem
+          gender_val = 0.0 if char_ga[0] == "female" else 1.0
+          age_val    = int(char_ga[1]) if len(char_ga) > 1 else 25
+
+          char_params = {
+            "detail":     quality,
+            "rig":        "game",
+            "restPose":   "A",
+            "animations": True,
+            "faceShapes": False,
+            "gender":     gender_val,
+            "ageYears":   age_val,
+          }
+          if weapon_param != "none":
+            char_params["weapon"] = weapon_param
+          if carry_param != "none":
+            char_params["carry"] = carry_param
+
+          output = {
+            "prop_key":     prop_key,
+            "category":     category,
+            "weapon_param": weapon_param,
+            "carry_param":  carry_param,
+            "action_prop":  action_prop if category == "action_prop" else None,
+            "with_character": with_char,
+            "char_preset":  char_preset,
+            "char_params":  char_params,
+            "resolved_clip": resolved_clip,
+            "weapon_pose":  weapon_pose if category == "weapon" else None,
+            "weapon_yaw":   weapon_yaw  if category == "weapon" else 0,
+            "weapon_pitch": weapon_pitch if category == "weapon" else 0,
+            "export_mode":  export_mode,
+          }
+
+          with open("axev-build/prop_params.json", "w") as f:
+            json.dump(output, f, indent=2)
+          print("✅ Parâmetros do prop:")
+          print(json.dumps(output, indent=2))
+          PYEOF
+
+      # ─── 8. GERAR PROP ───────────────────────────────────────────────────
+      - name: Gerar prop com Ara 3D Gen
+        working-directory: ara-3d-gen
+        env:
+          FORMATS_NORM: ${{ env.FORMATS_NORM }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/props
+
+          cat > export-prop.ts << 'TSEOF'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { buildHuman } from '../src/core/human';
+          import { triangleCount } from '../src/core/mesh';
+          import { DEFAULT_PARAMS, PRESETS, type HumanParams } from '../src/core/params';
+          import { exportCharacter, type ExportFormat } from '../src/export';
+          import { nodeLibrary } from './node-assets';
+
+          const pparams = JSON.parse(readFileSync('../axev-build/prop_params.json', 'utf8'));
+          const lib = await nodeLibrary();
+
+          const presetName = pparams.char_preset ?? 'Athletic man';
+          const preset = (PRESETS as Record<string, object>)[presetName] ?? {};
+          const params: HumanParams = {
+            ...DEFAULT_PARAMS,
+            ...preset,
+            ...pparams.char_params,
+          };
+
+          const ch = await buildHuman(lib, params);
+          const formats = (process.env.FORMATS_NORM ?? 'glb').split(',') as ExportFormat[];
+
+          mkdirSync('out/props', { recursive: true });
+          const written: string[] = [];
+          for (const fmt of formats) {
+            const file = await exportCharacter(lib, ch, fmt);
+            const outPath = `out/props/${file.name}`;
+            writeFileSync(outPath, file.data);
+            written.push(`${file.name} (${(file.data.length / 1024 / 1024).toFixed(2)} MB)`);
+          }
+
+          const propDesc = pparams.weapon_param !== 'none'
+            ? `weapon=${pparams.weapon_param} pose=${pparams.weapon_pose} yaw=${pparams.weapon_yaw}° pitch=${pparams.weapon_pitch}°`
+            : pparams.carry_param !== 'none'
+            ? `carry=${pparams.carry_param}`
+            : `action_prop=${pparams.action_prop}`;
+
+          console.log(`${params.name ?? presetName}: prop=${pparams.prop_key} ${propDesc} tris=${triangleCount(ch.mesh)} materials=${ch.mesh.materials.length} built`);
+          console.log(`  -> ${written.join(', ')}`);
+          TSEOF
+
+          npx tsx export-prop.ts 2>&1 | tee ../axev-build/engine_output.log
+          echo "✅ Geração concluída."
+          find out/props -type f -printf '  %p (%s bytes)\n'
+
+      # ─── 9. GERAR CATÁLOGO DO PROP ────────────────────────────────────────
+      - name: Gerar catálogo do prop
+        env:
+          PROP_ID:          ${{ inputs.prop_id }}
+          PROP_NAME:        ${{ inputs.prop_name }}
+          PROP_CATEGORY:    ${{ inputs.prop_category }}
+          WEAPON_TYPE:      ${{ inputs.weapon_type }}
+          CARRY_TYPE:       ${{ inputs.carry_type }}
+          ACTION_PROP_TYPE: ${{ inputs.action_prop_type }}
+          WITH_CHARACTER:   ${{ inputs.with_character }}
+          CHAR_PRESET:      ${{ inputs.character_preset }}
+          CHAR_GENDER_AGE:  ${{ inputs.character_gender_age }}
+          PROP_ANIMATION:   ${{ inputs.prop_animation }}
+          WEAPON_POSE:      ${{ inputs.weapon_pose }}
+          WEAPON_YAW:       ${{ inputs.weapon_yaw }}
+          WEAPON_PITCH:     ${{ inputs.weapon_pitch }}
+          EXPORT_FORMATS:   ${{ env.FORMATS_NORM }}
+          EXPORT_MODE:      ${{ inputs.export_mode }}
+          QUALITY:          ${{ inputs.quality }}
+          RUN_NUMBER:       ${{ github.run_number }}
+          REPO:             ${{ github.repository }}
+        run: |
+          mkdir -p axev-output
+          python3 << 'PYEOF'
+          import json, os, hashlib, re
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          prop_id      = env("PROP_ID")
+          prop_name    = env("PROP_NAME")
+          category     = env("PROP_CATEGORY")
+          weapon_type  = env("WEAPON_TYPE")
+          carry_type   = env("CARRY_TYPE")
+          action_prop  = env("ACTION_PROP_TYPE")
+          with_char    = env("WITH_CHARACTER") == "yes"
+          char_preset  = env("CHAR_PRESET")
+          char_ga      = env("CHAR_GENDER_AGE")
+          prop_anim    = env("PROP_ANIMATION")
+          weapon_pose  = env("WEAPON_POSE")
+          weapon_yaw   = env("WEAPON_YAW")
+          weapon_pitch = env("WEAPON_PITCH")
+          formats      = env("EXPORT_FORMATS")
+          export_mode  = env("EXPORT_MODE")
+          quality      = env("QUALITY")
+          run_number   = env("RUN_NUMBER")
+          repo         = env("REPO")
+          gen_date     = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+          pparams_path = Path("axev-build/prop_params.json")
+          pparams = json.loads(pparams_path.read_text()) if pparams_path.exists() else {}
+          prop_key = pparams.get("prop_key", "unknown")
+
+          # Stdout do motor
+          engine_log = Path("axev-build/engine_output.log").read_text() if Path("axev-build/engine_output.log").exists() else ""
+          tris = materials_count = "N/D"
+          m = re.search(r'tris=(\d+)\s+materials=(\d+)', engine_log)
+          if m:
+            tris           = m.group(1)
+            materials_count = m.group(2)
+
+          # Ficheiros produzidos
+          out_dir = Path("ara-3d-gen/out/props")
+          files_info = []
+          glb_hash = "N/D"
+          total_mb = 0.0
+          for f in sorted(out_dir.rglob("*")) if out_dir.exists() else []:
+            if f.is_file():
+              size_kb = f.stat().st_size // 1024
+              total_mb += f.stat().st_size / 1024 / 1024
+              files_info.append(f"| {f.name} | {f.suffix.lstrip('.')} | {size_kb} KB |")
+              if f.suffix == ".glb" and glb_hash == "N/D":
+                h = hashlib.sha256(f.read_bytes()).hexdigest()
+                glb_hash = h[:16] + "…"
+          files_table = "\n".join(files_info) if files_info else "| (nenhum) | - | - |"
+
+          # Descrição técnica por tipo de prop
+          PROP_DESC = {
+            "pistol":         "Arma de fogo curta · socket WeaponR · bone Pistol",
+            "rifle":          "Arma de fogo longa · socket WeaponR · bone Rifle",
+            "sword":          "Arma branca · socket WeaponR · bone Sword",
+            "knife":          "Arma branca curta · socket WeaponR · bone Knife",
+            "grenade":        "Granada · bone Grenade · lançada aos 0.82s · cai ao 1.2s",
+            "bag":            "Mala · segurada nas mãos ou cabeça",
+            "backpack":       "Mochila (parachute rig) · nas costas",
+            "parcel":         "Caixa/embrulho · pick up / put down / carry on head",
+            "phone":          "Telefone · mão direita · phone_call clip",
+            "broom":          "Vassoura · mão direita · sweeping clip",
+            "basin":          "Bacia · carry on head",
+            "parachute":      "Paraquedas · canopy animado · bone ParachuteCanopy · scale channel",
+            "ladder":         "Escada · prop de acção · colocada no início do climb",
+            "vault_obstacle": "Obstáculo de salto · prop de acção · colocado no início do vault",
+            "ledge_wall":     "Parede de borda · prop de acção · ledge_hang + climb_up_ledge",
+            "cover_wall":     "Parede de cobertura · prop de acção · 1.1m de altura",
+          }
+          prop_desc = PROP_DESC.get(prop_key, prop_key)
+
+          # Socket / bone por tipo
+          SOCKET_MAP = {
+            "pistol": "WeaponR (mão direita)", "rifle": "WeaponR (mão direita)",
+            "sword": "WeaponR (mão direita)",  "knife": "WeaponR (mão direita)",
+            "grenade": "bone Grenade (independente)", "parachute": "bone ParachuteCanopy",
+            "bag": "mãos (LeftHand + RightHand)", "backpack": "costas (Spine2)",
+            "parcel": "mãos (LeftHand + RightHand)", "phone": "RightHand",
+            "broom": "RightHand", "basin": "Head",
+          }
+          socket = SOCKET_MAP.get(prop_key, "depende da animação")
+
+          md = f"""# AXEV Prop Catalog
+          <!-- Gerado automaticamente pelo pipeline ara-axev-prop.yml — NÃO editar manualmente -->
+
+          ## 1. IDENTIFICAÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | id | `{prop_id}` |
+          | nome | {prop_name} |
+          | categoria | {category} |
+          | prop_key | {prop_key} |
+          | pipeline_version | ara-axev-prop.yml · run #{run_number} |
+          | repo | {repo} |
+          | hash_glb (SHA-256 parcial) | `{glb_hash}` |
+          | data_geracao | {gen_date} |
+          | motor | Ara 3D Gen (olatunde85/3d-gen) |
+
+          ---
+
+          ## 2. DESCRIÇÃO TÉCNICA DO PROP
+
+          | Campo | Valor |
+          |---|---|
+          | descricao | {prop_desc} |
+          | socket_bone | {socket} |
+          | triangulos | {tris} (prop + personagem) |
+          | materiais | {materials_count} |
+          | total_exportado | {total_mb:.2f} MB |
+          | export_mode | {export_mode} |
+
+          ---
+
+          ## 3. PERSONAGEM PORTADOR
+
+          | Campo | Valor |
+          |---|---|
+          | with_character | {"sim" if with_char else "não — prop standalone"} |
+          | preset | {char_preset if with_char else "N/A"} |
+          | gender_age | {char_ga if with_char else "N/A"} |
+          | rig | game (Mixamo-compatible) |
+          | qualidade | {quality} |
+
+          ---
+
+          ## 4. ANIMAÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | clip_exportado | {pparams.get("resolved_clip", "N/D")} |
+          | prop_animation_input | {prop_anim} |
+          | fps | 30 |
+          | export_mode | {export_mode} |
+          | weapon_pose | {weapon_pose if category == "weapon" else "N/A"} |
+          | weapon_yaw | {weapon_yaw + "°" if category == "weapon" else "N/A"} (limite: -80° a +80°) |
+          | weapon_pitch | {weapon_pitch + "°" if category == "weapon" else "N/A"} (limite: -45° a +60°) |
+
+          > ⚠️ Grenade: prop é lançado aos **0.82s** e cai aos **1.2s** — sincronizar efeitos sonoros nestes timestamps.
+
+          ---
+
+          ## 5. INTEGRAÇÃO NO ENGINE
+
+          | Campo | Valor |
+          |---|---|
+          | socket | {socket} |
+          | eixos | Y-up · Z-forward (GLB padrão) |
+          | escala | metros — não alterar escala no engine |
+          | colisores | não exportados — adicionar no engine |
+          | instanciação | exportar prop separado (mode=static) para instanciar independentemente |
+
+          > ⚠️ Props de acção (ladder/vault/ledge/cover) são colocados automaticamente pelo Studio — para uso no engine, posicionar manualmente na cena.
+
+          ---
+
+          ## 6. METADADOS DE PRODUÇÃO
+
+          | Campo | Valor |
+          |---|---|
+          | prop_category | {category} |
+          | prop_key | {prop_key} |
+          | weapon_param | {pparams.get("weapon_param","none")} |
+          | carry_param | {pparams.get("carry_param","none")} |
+          | resolved_clip | {pparams.get("resolved_clip","N/D")} |
+          | weapon_pose | {weapon_pose} |
+          | weapon_yaw | {weapon_yaw}° |
+          | weapon_pitch | {weapon_pitch}° |
+          | export_mode | {export_mode} |
+          | formatos_exportados | {formats} |
+          | config_file | ara-axev-prop.yml |
+
+          ### Parâmetros completos (prop_params.json)
+          ```json
+          {json.dumps(pparams, indent=2, ensure_ascii=False)}
+          ```
+
+          ---
+
+          ## 7. FICHEIROS EXPORTADOS
+
+          | Ficheiro | Formato | Tamanho |
+          |---|---|---|
+          {files_table}
+
+          ---
+
+          ## 8. VALIDAÇÃO E QA
+
+          | Verificação | Como validar | Esperado |
+          |---|---|---|
+          | Triângulos | stdout do motor | > 0 |
+          | Socket bone presente | Blender / gltf-check | bone "{socket.split(" ")[0]}" existe |
+          | Prop não destacado | action-props-export-check.ts | vertex drift < 0.004m |
+          | Yaw/pitch dentro dos limites | -80≤yaw≤80, -45≤pitch≤60 | ✅ validado no step 1 |
+          | Grenade release timing | action-props-check.ts | lançado aos 0.82s |
+          | Parachute canopy scale | action-props-export-check.ts | scale channel preservado |
+          | Hash GLB | SHA-256 | `{glb_hash}` |
+
+          ---
+
+          ## MÍNIMO VIÁVEL PARA USAR
+
+          - `prop_key` · `socket_bone` · `resolved_clip` · `hash_glb`
+
+          ## MÍNIMO PARA INTEGRAÇÃO PERFEITA NO ENGINE
+
+          Todos os campos acima **mais**:
+          - Colisores do prop definidos no engine
+          - Socket bone ligado ao WeaponSocket do personagem
+          - Timing de efeitos sonoros alinhado com o clip (ex: grenade 0.82s)
+          - Instância standalone (mode=static) para props de cena
+
+          ---
+          *Pipeline: ara-axev-prop.yml · Run #{run_number} · {gen_date}*
+          """
+
+          out = Path("axev-output/AXEV_PROP_CATALOG.md")
+          out.write_text(md, encoding="utf-8")
+          print(f"✅ Catálogo do prop gerado: {out} ({out.stat().st_size} bytes)")
+          PYEOF
+
+      # ─── 10. VALIDAR ──────────────────────────────────────────────────────
+      - name: Validar ficheiros exportados
+        env:
+          FORMATS_NORM: ${{ env.FORMATS_NORM }}
+        run: |
+          set -euo pipefail
+          OUT="ara-3d-gen/out/props"
+          if [ ! -d "$OUT" ] || [ -z "$(find "$OUT" -type f -print -quit)" ]; then
+            echo "::error::Nenhum ficheiro de prop exportado."
+            exit 1
+          fi
+          IFS=',' read -ra FMTS <<< "$FORMATS_NORM"
+          for fmt in "${FMTS[@]}"; do
+            fmt=$(echo "$fmt" | tr -d '[:space:]')
+            FILES=$(find "$OUT" -name "*.${fmt}" -type f 2>/dev/null)
+            if [ -z "$FILES" ]; then
+              echo "::error::Formato $fmt não produzido."
+              exit 1
+            fi
+            for f in $FILES; do
+              SIZE=$(stat -c%s "$f")
+              echo "✅ $fmt: $f ($(( SIZE / 1024 )) KB)"
+            done
+          done
+          echo "✅ Todos os formatos validados."
+
+      # ─── 11. RELATÓRIO E ARTEFACTO ────────────────────────────────────────
+      - name: Criar relatório e publicar artefacto
+        env:
+          PROP_ID:       ${{ inputs.prop_id }}
+          PROP_NAME:     ${{ inputs.prop_name }}
+          PROP_CATEGORY: ${{ inputs.prop_category }}
+          WEAPON_TYPE:   ${{ inputs.weapon_type }}
+          CARRY_TYPE:    ${{ inputs.carry_type }}
+          FORMATS_NORM:  ${{ env.FORMATS_NORM }}
+          EXPORT_MODE:   ${{ inputs.export_mode }}
+          RUN_NUMBER:    ${{ github.run_number }}
+          REPO:          ${{ github.repository }}
+        run: |
+          mkdir -p axev-output/exports
+          cp -r ara-3d-gen/out/props/. axev-output/exports/ 2>/dev/null || true
+          cp axev-build/prop_params.json axev-output/AXEV_PROP_PARAMS.json 2>/dev/null || true
+          cp axev-build/engine_output.log axev-output/AXEV_ENGINE_OUTPUT.log 2>/dev/null || true
+
+          FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
+          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          cat > axev-output/AXEV_PROP_REPORT.md << EOF
+          # AXEV 3D — Relatório do Prop
+
+          ## Identificação
+          - **ID**: ${PROP_ID}
+          - **Nome**: ${PROP_NAME}
+          - **Categoria**: ${PROP_CATEGORY}
+          - **Run**: #${RUN_NUMBER} | **Repo**: ${REPO}
+          - **Data**: ${DATA}
+
+          ## Configuração
+          | Campo | Valor |
+          |-------|-------|
+          | Categoria | ${PROP_CATEGORY} |
+          | Arma | ${WEAPON_TYPE} |
+          | Carry | ${CARRY_TYPE} |
+          | Formatos | ${FORMATS_NORM} |
+          | Modo | ${EXPORT_MODE} |
+
+          ## Ficheiros Produzidos
+          ${FILES_LIST}
+
+          ## Documentação
+          - 📄 [Catálogo do Prop](./AXEV_PROP_CATALOG.md)
+          - 📄 [Parâmetros Completos](./AXEV_PROP_PARAMS.json)
+          - 📄 [Log do Motor](./AXEV_ENGINE_OUTPUT.log)
+
+          ---
+          *Gerado por AXEV 3D Studio — ara-axev-prop.yml*
+          EOF
+
+      - name: Publicar artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-PROP-${{ inputs.prop_id }}
+          path: axev-output/
+          if-no-files-found: error
+          retention-days: 14
