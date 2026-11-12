@@ -522,8 +522,6 @@ jobs:
           set -euo pipefail
           mkdir -p out
 
-          # FIX: escrever o script DENTRO de ara-3d-gen para que os imports
-          # relativos (./src/core/params) sejam resolvidos correctamente pelo tsx
           cat > merge-params.ts << 'TSEOF'
           import { readFileSync, writeFileSync } from 'node:fs';
           import { DEFAULT_PARAMS, PRESETS } from './src/core/params';
@@ -546,6 +544,210 @@ jobs:
 
           echo "✅ Geração concluída."
           find out -type f -printf '  %p (%s bytes)\n'
+
+      # ─── 8b. GERAR CATÁLOGO DE PERSONAGEM (CLAUDE AI) ────────────────────
+      - name: Gerar especificação de catálogo (Claude AI)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHARACTER_ID:      ${{ inputs.character_id }}
+          CHARACTER_NAME:    ${{ inputs.character_name }}
+          PRESET:            ${{ inputs.preset }}
+          GENDER_AGE:        ${{ inputs.gender_age }}
+          BODY:              ${{ inputs.body }}
+          SKIN:              ${{ inputs.skin_tone }}
+          HAIR:              ${{ inputs.hair }}
+          FACIAL_HAIR:       ${{ inputs.facial_hair }}
+          EYES:              ${{ inputs.eyes }}
+          OUTFIT:            ${{ inputs.outfit }}
+          SHOES_HAT:         ${{ inputs.shoes_hat }}
+          WEAPON:            ${{ inputs.weapon }}
+          EXPRESSION:        ${{ inputs.expression }}
+          RIG_ANIM:          ${{ inputs.rig_anim }}
+          QUALITY:           ${{ inputs.quality }}
+          FORMATS_NORM:      ${{ env.FORMATS_NORM }}
+          RUN_NUMBER:        ${{ github.run_number }}
+          REPO:              ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p axev-output
+
+          PARAMS_JSON=$(cat axev-build/character.params.json 2>/dev/null || echo "{}")
+          FILES_LIST=$(find ara-3d-gen/out -type f -printf '%P (%s bytes)\n' 2>/dev/null || echo "nenhum")
+          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          python3 << 'PYEOF'
+          import os, json, urllib.request, urllib.error
+
+          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+          if not api_key:
+              print("::warning::ANTHROPIC_API_KEY não definida — catálogo ignorado.")
+              with open("axev-output/AXEV_CHARACTER_CATALOG.md", "w") as f:
+                  f.write("# AXEV Character Catalog\n\n> ⚠️ ANTHROPIC_API_KEY não configurada. Catálogo não gerado.\n")
+              exit(0)
+
+          params_json  = os.environ.get("PARAMS_JSON", "{}")
+          files_list   = os.environ.get("FILES_LIST", "nenhum")
+          data         = os.environ.get("DATA", "")
+          char_id      = os.environ.get("CHARACTER_ID", "")
+          char_name    = os.environ.get("CHARACTER_NAME", "")
+          preset       = os.environ.get("PRESET", "")
+          gender_age   = os.environ.get("GENDER_AGE", "")
+          body         = os.environ.get("BODY", "")
+          skin         = os.environ.get("SKIN", "")
+          hair         = os.environ.get("HAIR", "")
+          facial_hair  = os.environ.get("FACIAL_HAIR", "")
+          eyes         = os.environ.get("EYES", "")
+          outfit       = os.environ.get("OUTFIT", "")
+          shoes_hat    = os.environ.get("SHOES_HAT", "")
+          weapon       = os.environ.get("WEAPON", "")
+          expression   = os.environ.get("EXPRESSION", "")
+          rig_anim     = os.environ.get("RIG_ANIM", "")
+          quality      = os.environ.get("QUALITY", "")
+          formats      = os.environ.get("FORMATS_NORM", "")
+          run_number   = os.environ.get("RUN_NUMBER", "")
+          repo         = os.environ.get("REPO", "")
+
+          user_prompt = f"""Atua como Technical Art Director / Character Pipeline Specialist.
+
+          CONTEXTO:
+          Tenho um catálogo de personagem 3D (metadados + ficheiro GLB) e quero
+          garantir que ele contenha TODA a informação necessária para animar o
+          personagem da forma mais apropriada possível (game, cinemática, facial,
+          fala, física secundária). Produz uma ESPECIFICAÇÃO DE CATÁLOGO completa,
+          estruturada e verificável.
+
+          DADOS DO PERSONAGEM GERADO:
+          - ID: {char_id}
+          - Nome: {char_name}
+          - Preset: {preset}
+          - Género/Idade: {gender_age}
+          - Corpo: {body}
+          - Tom de pele: {skin}
+          - Cabelo: {hair}
+          - Pelo facial: {facial_hair}
+          - Olhos: {eyes}
+          - Outfit: {outfit}
+          - Calçado/Chapéu: {shoes_hat}
+          - Arma: {weapon}
+          - Expressão: {expression}
+          - Rig/Anim: {rig_anim}
+          - Qualidade: {quality}
+          - Formatos exportados: {formats}
+          - Ficheiros produzidos: {files_list}
+          - Parâmetros completos: {params_json}
+          - Run: #{run_number} | Repo: {repo}
+          - Data de geração: {data}
+
+          TAREFA:
+          Gera um documento de especificação de catálogo de personagem com as
+          secções abaixo. Para CADA campo indica: (a) nome do campo, (b) tipo de
+          dado, (c) se é OBRIGATÓRIO ou OPCIONAL, (d) exemplo de valor preenchido
+          com os dados reais deste personagem, (e) PORQUE é necessário para
+          animação, e (f) o ERRO/ARMADILHA típica se o campo faltar ou vier mal
+          preenchido.
+
+          SECÇÕES OBRIGATÓRIAS DO CATÁLOGO:
+
+          1. IDENTIFICAÇÃO E VERSÃO
+             - id, nome, versão do asset, versão do pipeline, hash do ficheiro,
+               data, autor, motor(es) alvo, licença.
+
+          2. GEOMETRIA E ESCALA
+             - unidades (metros/cm), escala real, altura em unidades, contagem de
+               vértices/triângulos, LODs (níveis e contagens), UV sets, materiais,
+               texturas (resolução, canais), se é manifold/watertight.
+
+          3. ESQUELETO (SKELETON SPEC) — CRÍTICO
+             - lista completa de bones (nome, parent, posição de repouso, limites
+               de rotação, se é deform bone ou control bone), root bone, se é
+               Humanoid/Mecanim-compatible, convenção de eixos (forward/up),
+               A-pose vs T-pose, número de influências por vértice.
+
+          4. SKINNING / DEFORMAÇÃO
+             - max influences, pesos normalizados?, áreas de risco (cotovelos,
+               joelhos, axilas, virilha), relatório de qualidade de skinning,
+               correções aplicadas.
+
+          5. ANIMAÇÕES EMBUTIDAS (ANIMATION MANIFEST) — CRÍTICO
+             - para cada clipe: nome, fps, duração, loop (sim/não), root motion
+               (sim/não), frame range, tipo (idle/walk/run/aim/reload...), se é
+               additive, blend space recomendado.
+
+          6. ANIMAÇÃO FACIAL E FALA — CRÍTICO
+             - lista de blendshapes/morph targets (nome exato, range 0–1, eixo),
+               jaw/mouth/eyes/brows, teeth/tongue (presença e rig), visemes
+               (mapa fonema→shape), expressões base.
+
+          7. FÍSICA SECUNDÁRIA
+             - cabelo, tecido (top/bottom), acessórios (tactical_vest, helmet,
+               belt) — quais têm bones próprios, colisores, simulação (cloth/hair)
+               ou rig manual.
+
+          8. ROOT MOTION E LOCOMOÇÃO
+             - se root tem motion, eixo forward, se há root bone separado,
+               ground plane / foot contact, IK targets (pés/mãos), footstep events.
+
+          9. MATERIAIS E RENDER
+             - shader model, canais (albedo, normal, roughness, metallic, AO,
+               emissive), se é PBR, transparência, blend shapes afetam normais?
+
+          10. METADADOS DE PRODUÇÃO
+              - preset, seed, parâmetros de geração (ex.: gender/age/muscle/
+                proportions), formatos exportados (glb/fbx/usd), tamanho,
+                ferramenta de origem, yml/config usado.
+
+          11. VALIDAÇÃO E QA (CHECKLIST)
+              - lista de verificações automáticas: escala, bones, shapes, clipes,
+                materiais, LODs, root motion. Cada uma com PASS/FAIL esperado.
+
+          FORMATO DE SAÍDA:
+          - Ficheiro Markdown completo.
+          - Tabela por secção (Campo | Tipo | Obrigatório? | Valor neste personagem | Porquê | Armadilha se faltar).
+          - No fim: RESUMO "MÍNIMO VIÁVEL PARA ANIMAR" e RESUMO "MÍNIMO PARA ANIMAÇÃO PERFEITA".
+          - Destaca com ⚠️ os campos NÃO INFALÍVEIS (falha silenciosa).
+          - Usa os dados reais deste personagem em todos os exemplos.
+          - Língua: Português.
+
+          RESTRIÇÕES:
+          - Não inventes campos inúteis; foca no que impacta animação.
+          - Sê explícito sobre OBRIGATÓRIO vs OPCIONAL.
+          - Usa linguagem técnica mas clara."""
+
+          payload = {
+              "model": "claude-sonnet-4-6",
+              "max_tokens": 8000,
+              "messages": [{"role": "user", "content": user_prompt}]
+          }
+
+          req = urllib.request.Request(
+              "https://api.anthropic.com/v1/messages",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "x-api-key": api_key,
+                  "anthropic-version": "2023-06-01"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  result = json.loads(resp.read().decode("utf-8"))
+              catalog_md = result["content"][0]["text"]
+              print("✅ Catálogo gerado pelo Claude AI.")
+          except urllib.error.HTTPError as e:
+              error_body = e.read().decode("utf-8")
+              print(f"::warning::Erro na API Claude ({e.code}): {error_body}")
+              catalog_md = f"# AXEV Character Catalog\n\n> ⚠️ Erro ao gerar catálogo via Claude API (HTTP {e.code}).\n\n```\n{error_body}\n```\n"
+          except Exception as e:
+              print(f"::warning::Exceção ao chamar Claude API: {e}")
+              catalog_md = f"# AXEV Character Catalog\n\n> ⚠️ Erro inesperado ao gerar catálogo: {e}\n"
+
+          with open("axev-output/AXEV_CHARACTER_CATALOG.md", "w", encoding="utf-8") as f:
+              f.write(catalog_md)
+
+          print(f"📄 Catálogo guardado: axev-output/AXEV_CHARACTER_CATALOG.md ({len(catalog_md)} chars)")
+          PYEOF
 
       # ─── 9. VALIDAR ───────────────────────────────────────────────────────
       - name: Validar ficheiros exportados
@@ -627,6 +829,10 @@ jobs:
 
           ## Ficheiros Produzidos
           ${FILES_LIST}
+
+          ## Documentação
+          - 📄 [Especificação de Catálogo](./AXEV_CHARACTER_CATALOG.md)
+          - 📄 [Parâmetros Completos](./AXEV_CHARACTER_PARAMS.json)
 
           ---
           *Gerado por AXEV 3D Studio — ara-axev-crime.yml*
