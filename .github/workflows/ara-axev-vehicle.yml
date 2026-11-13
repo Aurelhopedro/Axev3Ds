@@ -300,46 +300,48 @@ jobs:
           elif clips_mode == "ride_board_alight":
             clips_list = [ride_clip] + BOARD_ALIGHT.get(vehicle_type, [])
           else:
-            clips_list = None  # all
+            clips_list = None
 
-          rider_params = {
+          vehicle_style = {
+            "color":   env("INPUT_COLOR", "#c0392b"),
+            "finish":  env("INPUT_FINISH", "gloss"),
+          }
+          if variant != "standard":
+            vehicle_style["variant"] = variant
+
+          preset_name = env("INPUT_RIDER_PRESET", "Athletic man")
+
+          # params para o export-cli.ts
+          # NOTA IMPORTANTE:
+          #   - vehicle: "none" → o motor NÃO gera o prop do veículo como ficheiro separado
+          #     → isso evita o zip e gera um GLB único do rider com as animações de condução
+          #   - vehicleStyle: guardamos para metadados, mas não passamos ao motor aqui
+          #   - animations: True + rig: "game" → GLB com animações embedded
+          #   - faceShapes/speechShapes: False → remove morph targets → ficheiro menor e sem zip
+          params_for_cli = {
+            "name": preset_name,
             "detail": env("INPUT_QUALITY", "high").lower(),
-            "vehicle": vehicle_type,
+            "vehicle": "none",        # não gerar prop separado → evita zip
             "animations": True,
             "rig": "game",
             "restPose": "A",
             "faceShapes": False,
             "speechShapes": False,
+            "stageProps": False,      # sem props de palco → evita ficheiros extra
+            "vehicleFile": False,     # explicitamente desligar prop do veículo
           }
 
           if with_rider:
             ga = env("INPUT_RIDER_GENDER_AGE", "male:25").split(":")
             gender_str = ga[0] if ga else "male"
             age_str    = ga[1] if len(ga) > 1 else "25"
-            rider_params["gender"] = 0.0 if gender_str == "female" else 1.0
+            params_for_cli["gender"] = 0.0 if gender_str == "female" else 1.0
             try:
               y = max(12, min(90, int(age_str)))
-              rider_params["age"] = round(0.5 + ((y-25)/65)*0.5 if y >= 25 else 0.5, 4)
+              params_for_cli["age"] = round(0.5 + ((y-25)/65)*0.5 if y >= 25 else 0.5, 4)
             except: pass
 
-          vehicle_style = {
-            "color":   env("INPUT_COLOR", "#c0392b"),
-            "finish":  env("INPUT_FINISH", "gloss"),
-            "variant": variant if variant != "standard" else None,
-          }
-          vehicle_style = {k: v for k, v in vehicle_style.items() if v}
-
-          preset_name = env("INPUT_RIDER_PRESET", "Athletic man")
-
-          # Gravar params.json para o export-cli
-          params_for_cli = {
-            **rider_params,
-            "name": preset_name,
-            "vehicleStyle": vehicle_style,
-          }
-
           output = {
-            "rider_params":    rider_params,
             "params_for_cli":  params_for_cli,
             "vehicle_type":    vehicle_type,
             "vehicle_style":   vehicle_style,
@@ -353,7 +355,6 @@ jobs:
           with open("axev-build/vehicle_params.json", "w") as f:
             json.dump(output, f, indent=2)
 
-          # Gravar também o params.json que o export-cli espera
           with open("axev-build/rider.params.json", "w") as f:
             json.dump(params_for_cli, f, indent=2)
 
@@ -362,9 +363,7 @@ jobs:
           PYEOF
 
       # ─── 8. GERAR VEÍCULO ────────────────────────────────────────────────
-      # Usamos o export-cli.ts nativo do motor (scripts/export-cli.ts).
-      # Ele lê --params e --formats e grava em --out.
-      # O output pode ser um .zip (animated+rig → múltiplos ficheiros) ou .glb/.fbx/.obj directo.
+      # export-cli.ts com vehicle:none + vehicleFile:false → GLB único (sem zip)
       - name: Gerar veículo com Ara 3D Gen
         working-directory: ara-3d-gen
         env:
@@ -373,19 +372,20 @@ jobs:
           set -euo pipefail
           mkdir -p out/vehicles
 
-          echo "▶ A correr export-cli.ts com formatos: $FORMATS_NORM"
+          echo "▶ A correr export-cli.ts | formatos: $FORMATS_NORM"
           npx tsx scripts/export-cli.ts \
             --params ../axev-build/rider.params.json \
             --formats "$FORMATS_NORM" \
             --out out/vehicles \
             2>&1 | tee ../axev-build/engine_output.log
 
+          echo ""
           echo "✅ Geração concluída. Ficheiros produzidos:"
           find out/vehicles -type f | sort | while read f; do
             echo "  $f ($(du -h "$f" | cut -f1))"
           done
 
-      # ─── 9. GERAR CATÁLOGO DO VEÍCULO ────────────────────────────────────
+      # ─── 9. GERAR CATÁLOGO ───────────────────────────────────────────────
       - name: Gerar catálogo do veículo
         env:
           VEHICLE_ID:       ${{ inputs.vehicle_id }}
@@ -405,137 +405,96 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p axev-output
-
           python3 << 'PYEOF'
-          import os, json, hashlib, re
+          import os, json, re
           from pathlib import Path
           from datetime import datetime, timezone
 
           def env(k, d=""): return os.environ.get(k, d).strip()
 
-          vehicle_id   = env("VEHICLE_ID")
-          vehicle_name = env("VEHICLE_NAME")
-          vehicle_type = env("VEHICLE_TYPE")
-          color        = env("COLOR")
-          finish       = env("FINISH")
-          variant      = env("VARIANT")
-          with_rider   = env("WITH_RIDER") == "yes"
-          rider_preset = env("RIDER_PRESET")
-          rider_ga     = env("RIDER_GENDER_AGE")
-          clips        = env("CLIPS")
-          quality      = env("QUALITY")
-          formats      = env("FORMATS_NORM")
-          run_number   = env("RUN_NUMBER")
-          repo         = env("REPO")
-          gen_date     = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+          vehicle_id   = env("VEHICLE_ID"); vehicle_name = env("VEHICLE_NAME")
+          vehicle_type = env("VEHICLE_TYPE"); color = env("COLOR"); finish = env("FINISH")
+          variant = env("VARIANT"); with_rider = env("WITH_RIDER") == "yes"
+          rider_preset = env("RIDER_PRESET"); rider_ga = env("RIDER_GENDER_AGE")
+          clips = env("CLIPS"); quality = env("QUALITY"); formats = env("FORMATS_NORM")
+          run_number = env("RUN_NUMBER"); repo = env("REPO")
+          gen_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-          vparams_path = Path("axev-build/vehicle_params.json")
-          vparams = json.loads(vparams_path.read_text()) if vparams_path.exists() else {}
-
+          vparams = json.loads(Path("axev-build/vehicle_params.json").read_text())
           engine_log = Path("axev-build/engine_output.log").read_text() if Path("axev-build/engine_output.log").exists() else ""
+
           tris = materials_count = "N/D"
           m = re.search(r'(\d[\d,]+)\s+tris.*?(\d+)\s+materials', engine_log)
-          if m:
-              tris            = m.group(1)
-              materials_count = m.group(2)
+          if m: tris, materials_count = m.group(1), m.group(2)
 
           out_dir = Path("ara-3d-gen/out/vehicles")
-          files_info = []
-          total_mb = 0.0
+          files_info = []; total_mb = 0.0
           for f in sorted(out_dir.rglob("*")) if out_dir.exists() else []:
-              if f.is_file():
-                  size_kb = f.stat().st_size // 1024
-                  total_mb += f.stat().st_size / 1024 / 1024
-                  files_info.append(f"| {f.name} | {f.suffix.lstrip('.') or 'bin'} | {size_kb} KB |")
+            if f.is_file():
+              kb = f.stat().st_size // 1024; total_mb += f.stat().st_size / 1024 / 1024
+              files_info.append(f"| {f.name} | {f.suffix.lstrip('.') or 'bin'} | {kb} KB |")
           files_table = "\n".join(files_info) if files_info else "| (nenhum) | - | - |"
 
-          VEHICLE_CLIP = {
-            "bicycle": "ride_bicycle", "car": "drive_car", "sports_car": "drive_sports_car",
-            "suv": "drive_suv", "pickup": "drive_car", "motorcycle": "ride_motorcycle",
-            "horse": "ride_horse", "canoe": "paddle_canoe", "kayak": "paddle_kayak",
-            "rowboat": "row_boat", "motorboat": "drive_motorboat", "helicopter": "fly_helicopter",
-            "tank": "drive_tank", "jet": "fly_jet",
-          }
+          VEHICLE_CLIP = {"bicycle":"ride_bicycle","car":"drive_car","sports_car":"drive_sports_car","suv":"drive_suv","pickup":"drive_car","motorcycle":"ride_motorcycle","horse":"ride_horse","canoe":"paddle_canoe","kayak":"paddle_kayak","rowboat":"row_boat","motorboat":"drive_motorboat","helicopter":"fly_helicopter","tank":"drive_tank","jet":"fly_jet"}
           ride_clip = VEHICLE_CLIP.get(vehicle_type, "drive_car")
 
           md = f"""# AXEV Vehicle Catalog
-          <!-- Gerado automaticamente — NÃO editar manualmente -->
-
           ## Identificação
           | Campo | Valor |
           |---|---|
           | id | `{vehicle_id}` |
           | nome | {vehicle_name} |
           | tipo | {vehicle_type} |
-          | run | #{run_number} |
-          | repo | {repo} |
+          | run | #{run_number} · {repo} |
           | data | {gen_date} |
-          | motor | olatunde85/3d-gen · scripts/export-cli.ts |
 
           ## Geometria
-          | Campo | Valor |
-          |---|---|
-          | triângulos | {tris} |
-          | materiais | {materials_count} |
-          | total exportado | {total_mb:.2f} MB |
+          | triângulos | {tris} | materiais | {materials_count} | total | {total_mb:.2f} MB |
 
           ## Configuração
           | Campo | Valor |
           |---|---|
-          | cor | `{color}` |
-          | acabamento | {finish} |
-          | variante | {variant} |
+          | cor | `{color}` · acabamento {finish} · variante {variant} |
           | clip principal | {ride_clip} |
-          | com rider | {"sim" if with_rider else "não"} |
-          | rider preset | {rider_preset if with_rider else "N/A"} |
-          | rider gender/age | {rider_ga if with_rider else "N/A"} |
-          | qualidade | {quality} |
-          | formatos | {formats} |
+          | rider | {"sim" if with_rider else "não"} · {rider_preset} · {rider_ga} |
+          | qualidade | {quality} · formatos {formats} |
 
           ## Ficheiros exportados
           | Ficheiro | Formato | Tamanho |
           |---|---|---|
           {files_table}
 
-          ## Parâmetros completos
+          ## Parâmetros
           ```json
           {json.dumps(vparams, indent=2, ensure_ascii=False)}
           ```
-          *Pipeline: ara-axev-vehicle.yml · Run #{run_number} · {gen_date}*
+          *ara-axev-vehicle.yml · Run #{run_number} · {gen_date}*
           """
 
-          out = Path("axev-output/AXEV_VEHICLE_CATALOG.md")
-          out.write_text(md, encoding="utf-8")
-          print(f"✅ Catálogo gerado: {out}")
+          Path("axev-output/AXEV_VEHICLE_CATALOG.md").write_text(md, encoding="utf-8")
+          print("✅ Catálogo gerado")
           PYEOF
 
-      # ─── 10. VALIDAR ──────────────────────────────────────────────────────
-      # O motor pode gerar um .zip com todos os ficheiros (quando há rig+anims),
-      # ou ficheiros directos (.glb/.fbx/.obj). Validamos que existe ALGUM ficheiro.
+      # ─── 10. VALIDAR ─────────────────────────────────────────────────────
       - name: Validar ficheiros exportados
         run: |
           set -euo pipefail
           OUT="ara-3d-gen/out/vehicles"
-
           if [ ! -d "$OUT" ] || [ -z "$(find "$OUT" -type f -print -quit)" ]; then
             echo "::error::Nenhum ficheiro exportado em $OUT"
             exit 1
           fi
-
           echo "✅ Ficheiros exportados:"
           find "$OUT" -type f | sort | while read f; do
             SIZE=$(stat -c%s "$f")
             echo "  $f ($(( SIZE / 1024 )) KB)"
-            if [ "$SIZE" -lt 100 ]; then
-              echo "::warning::Ficheiro suspeito muito pequeno: $f ($SIZE bytes)"
-            fi
+            [ "$SIZE" -lt 100 ] && echo "::warning::Ficheiro suspeito muito pequeno: $f"
           done
 
-      # ─── 11. RELATÓRIO E ARTEFACTO ────────────────────────────────────────
+      # ─── 11. ARTEFACTO ───────────────────────────────────────────────────
       - name: Criar relatório e publicar artefacto
         env:
           VEHICLE_ID:   ${{ inputs.vehicle_id }}
-          VEHICLE_NAME: ${{ inputs.vehicle_name }}
           VEHICLE_TYPE: ${{ inputs.vehicle_type }}
           COLOR:        ${{ inputs.color }}
           FINISH:       ${{ inputs.finish }}
@@ -546,24 +505,17 @@ jobs:
           FORMATS_NORM: ${{ env.FORMATS_NORM }}
           QUALITY:      ${{ inputs.quality }}
           RUN_NUMBER:   ${{ github.run_number }}
-          REPO:         ${{ github.repository }}
         run: |
           mkdir -p axev-output/exports
           cp -r ara-3d-gen/out/vehicles/. axev-output/exports/ 2>/dev/null || true
           cp axev-build/vehicle_params.json axev-output/AXEV_VEHICLE_PARAMS.json 2>/dev/null || true
           cp axev-build/engine_output.log  axev-output/AXEV_ENGINE_OUTPUT.log  2>/dev/null || true
-
           FILES_LIST=$(find axev-output/exports -type f -printf '  - %P (%s bytes)\n' 2>/dev/null || echo "  (nenhum)")
-          DATA=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
           cat > axev-output/AXEV_VEHICLE_REPORT.md << EOF
-          # AXEV 3D — Relatório do Veículo
-          - **ID**: ${VEHICLE_ID} | **Tipo**: ${VEHICLE_TYPE} | **Run**: #${RUN_NUMBER}
-          - **Data**: ${DATA}
-          - **Cor**: ${COLOR} | **Acabamento**: ${FINISH} | **Variante**: ${VARIANT}
-          - **Rider**: ${WITH_RIDER} (${RIDER_PRESET}) | **Clips**: ${CLIPS} | **Qualidade**: ${QUALITY}
-          - **Formatos**: ${FORMATS_NORM}
-
+          # AXEV 3D — Veículo ${VEHICLE_ID}
+          - Tipo: ${VEHICLE_TYPE} | Cor: ${COLOR} ${FINISH} | Variante: ${VARIANT}
+          - Rider: ${WITH_RIDER} (${RIDER_PRESET}) | Clips: ${CLIPS} | Qualidade: ${QUALITY}
+          - Formatos: ${FORMATS_NORM} | Run: #${RUN_NUMBER}
           ## Ficheiros
           ${FILES_LIST}
           EOF
