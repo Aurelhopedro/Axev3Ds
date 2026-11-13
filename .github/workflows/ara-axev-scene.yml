@@ -318,10 +318,22 @@ on:
         description: "Formato de export do cenário"
         required: true
         type: choice
-        default: "json"
+        default: "json_glb_mp4"
         options:
           - "json"
           - "json_and_catalog"
+          - "json_glb_mp4"
+
+      # 18 ── RESOLUÇÃO DO MP4
+      mp4_resolution:
+        description: "Resolução do MP4 (apenas para json_glb_mp4)"
+        required: true
+        type: choice
+        default: "720"
+        options:
+          - "480"
+          - "720"
+          - "1080"
 
 permissions:
   contents: read
@@ -334,7 +346,7 @@ jobs:
   generate-scene:
     name: "Gerar cenário"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       # ─── 1. VALIDAÇÃO ────────────────────────────────────────────────────
@@ -434,12 +446,9 @@ jobs:
             gender_val = 0.0 if ga[0] == "female" else 1.0
             age_val    = int(ga[1]) if len(ga) > 1 else 25
 
-            # Duração por tipo de acção
             LOOP_ACTIONS = {"idle","walk","run","talk","fighting_stance","cover_fire",
                             "phone_call","looking_around","drive_car","drive_motorcycle",
                             "ride_horse","fly_helicopter","take_cover"}
-            ONE_SHOT_ACTIONS = {"punch_combo","front_kick","sword_combo","rifle_fire",
-                                "pistol_fire","shot_chest","rifle_death_forward","wave"}
             clip_duration = duration if action in LOOP_ACTIONS else min(3, duration)
 
             actor = {
@@ -472,12 +481,11 @@ jobs:
           # ── Câmara shots ──────────────────────────────────────────────────
           camera_shots = [
             {
-              "framing": framing,
+              "id": "shot1",
+              "shot": framing,
               "target": "all" if len(cast) > 1 else "char1",
               "start": 0,
               "duration": duration,
-              "angle": angle,
-              "elevation": elevation,
             }
           ]
 
@@ -493,46 +501,45 @@ jobs:
             "tropical_pop":       "tropical-relaxing-pop",
             "old_school_salsa":   "old-school-salsa-02",
           }
-          audio = {}
+          audio = {"muted": True, "speech": [], "effects": []}
           if music != "none" and music in MUSIC_IDS:
+            audio["muted"] = False
             audio["music"] = {
-              "id": MUSIC_IDS[music],
+              "track": MUSIC_IDS[music],
               "volume": 0.7,
-              "fadeIn": 1.0,
-              "fadeOut": 1.5,
             }
+          else:
+            audio["music"] = {"track": "none"}
 
-          # ── Montar JSON final (Ara Studio format) ─────────────────────────
+          # ── Montar JSON final (Ara Studio v2 format) ──────────────────────
           scene_json = {
             "kind": "ara-studio",
-            "version": 1,
+            "version": 2,
+            "title": scene_name,
+            "template": location.replace("_", "-"),
+            "camera": "locked",
+            "aspect": "landscape",
+            "caption": False,
+            "texts": [],
+            "view": {
+              "azimuth": angle,
+              "elevation": elevation,
+              "zoom": 1.0
+            },
+            "actors": cast,
+            "shots": camera_shots,
+            "audio": audio,
             "meta": {
               "id": scene_id,
-              "name": scene_name,
               "run": int(run_number) if run_number else 0,
               "repo": repo,
             },
-            "location": location,
-            "duration": duration,
-            "title": scene_name,
-            "showTitle": False,
-            "aspect": "landscape",
-            "camera": {
-              "angle": angle,
-              "elevation": elevation,
-              "distance": 1.0,
-              "movement": "locked",
-            },
-            "cast": cast,
-            "shots": camera_shots,
-            "audio": audio,
           }
 
-          # Guardar JSON
           out = Path("axev-build/scene.json")
           out.write_text(json.dumps(scene_json, indent=2, ensure_ascii=False))
           print(f"✅ JSON do cenário gerado: {out}")
-          print(f"   Localização: {location}")
+          print(f"   Template: {scene_json['template']}")
           print(f"   Cast: {len(cast)} personagem(ns)")
           print(f"   Duração: {duration}s")
           print(f"   Música: {music}")
@@ -593,192 +600,406 @@ jobs:
           repo         = env("REPO")
           gen_date     = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-          # Hash do JSON
           scene_path = Path("axev-build/scene.json")
           scene_data = json.loads(scene_path.read_text())
           scene_hash = hashlib.sha256(scene_path.read_bytes()).hexdigest()[:16] + "…"
-          cast_count = len(scene_data.get("cast", []))
+          cast_count = len(scene_data.get("actors", scene_data.get("cast", [])))
 
-          # Descrição de localização
-          LOCATION_DESC = {
-            "neon_street":      "Rua neon urbana · exterior nocturno · 360m",
-            "neon_alley":       "Beco neon · exterior nocturno · espaço fechado",
-            "daylight_alley":   "Beco diurno · exterior · espaço fechado",
-            "highway":          "Auto-estrada · rota de condução longa",
-            "military_base":    "Base militar · interior + exterior",
-            "prison_cell":      "Cela de prisão · interior pequeno",
-            "prison_yard":      "Pátio de prisão · exterior murado",
-            "police_room":      "Sala de polícia · interior",
-            "hospital_room":    "Quarto de hospital · interior",
-            "rooftop":          "Terraço urbano · exterior · altura",
-            "forest_trail":     "Trilho de floresta · exterior · 360m",
-            "beach":            "Praia · exterior · água disponível",
-            "harbour":          "Porto · exterior · cais de embarque",
-            "nightclub":        "Nightclub · interior · pista de dança",
-            "street_cafe":      "Café de rua · exterior · mesas e cadeiras",
-            "boardroom":        "Sala de reuniões · interior · mesa central",
-            "open_plan_office": "Escritório open-plan · interior · secretárias",
-            "warehouse":        "Armazém · interior · espaço amplo",
-            "church":           "Igreja · interior · bancos e altar",
-            "football_stadium": "Estádio · 68×105m · relvado",
-          }
-          location_desc = LOCATION_DESC.get(location, location)
-
-          # Cast rows
-          cast_rows = f"""\
-          | char1 | {char1_preset} | {char1_ga} | {char1_action} | {char1_weapon} | {char1_pos} |"""
+          cast_rows = f"| char1 | {char1_preset} | {char1_ga} | {char1_action} | {char1_weapon} | {char1_pos} |"
           if char2_preset != "none":
-            cast_rows += f"""
-          | char2 | {char2_preset} | {char2_ga} | {char2_action} | {char2_weapon} | {char2_pos} |"""
+            cast_rows += f"\n| char2 | {char2_preset} | {char2_ga} | {char2_action} | {char2_weapon} | {char2_pos} |"
 
           md = f"""# AXEV Scene Catalog
-          <!-- Gerado automaticamente pelo pipeline ara-axev-scene.yml — NÃO editar manualmente -->
-
-          ## 1. IDENTIFICAÇÃO
-
+          ## Identificação
           | Campo | Valor |
           |---|---|
           | id | `{scene_id}` |
           | nome | {scene_name} |
-          | pipeline_version | ara-axev-scene.yml · run #{run_number} |
+          | run | #{run_number} |
           | repo | {repo} |
-          | hash_json (SHA-256 parcial) | `{scene_hash}` |
-          | data_geracao | {gen_date} |
-          | motor | Ara 3D Studio (olatunde85/3d-gen) |
-          | formato_saida | Ara Studio JSON (ara-studio v1) |
+          | hash | `{scene_hash}` |
+          | data | {gen_date} |
+          | export | {export_fmt} |
 
-          ---
-
-          ## 2. LOCALIZAÇÃO
-
-          | Campo | Valor |
-          |---|---|
-          | set | {location} |
-          | descricao | {location_desc} |
-          | area_maxima | ±200m X/Z |
-          | colisores | advisory (sem collision response) |
-          | agua | {"disponível (beach/harbour/forest)" if location in ("beach","harbour","forest_trail") else "não disponível neste set"} |
-
-          > ⚠️ Verificar staging com **Check staging & location map** no Studio antes de exportar vídeo.
-
-          ---
-
-          ## 3. CAST
-
-          | ID | Preset | Género/Idade | Acção | Arma | Posição (x:z:yaw) |
+          ## Cast
+          | ID | Preset | Género/Idade | Acção | Arma | Posição |
           |---|---|---|---|---|---|
           {cast_rows}
 
-          - **Máximo suportado:** 5 personagens por cena
-          - **Cast nesta cena:** {cast_count} personagem(ns)
-
-          ---
-
-          ## 4. TIMELINE
-
-          | Campo | Valor |
-          |---|---|
-          | duracao_total | {duration}s |
-          | fps | 30 |
-          | limite_acoes_por_char | 16 |
-          | limite_camera_shots | 12 |
-          | limite_maximo | 60s |
-          | acoes_char1 | {char1_action} ({duration}s) |
-          | acoes_char2 | {char2_action if char2_preset != "none" else "N/A"} |
-
-          > ⚠️ Acções one-shot (punch, shot, death) têm duração máxima de 3s — verificar sincronização com reacções do outro personagem.
-
-          ---
-
-          ## 5. CÂMARA
-
+          ## Câmara
           | Campo | Valor |
           |---|---|
           | enquadramento | {cam_framing} |
-          | angulo | {cam_angle}° |
-          | elevacao | {cam_elev} |
-          | movimento | locked |
-          | alvo | {"all cast" if cast_count > 1 else "char1"} |
-          | aspect_ratio | landscape (16:9) |
-          | shots_definidos | 1 |
+          | ângulo | {cam_angle}° |
+          | elevação | {cam_elev} |
 
-          ---
-
-          ## 6. ÁUDIO
-
+          ## Áudio
           | Campo | Valor |
           |---|---|
-          | musica | {music} |
-          | volume_musica | 0.7 |
-          | fade_in | 1.0s |
-          | fade_out | 1.5s |
-          | efeitos_sonoros | não definidos (adicionar no Studio) |
-          | dialogo | não definido (adicionar no Studio) |
+          | música | {music} |
 
-          > ⚠️ Lip-sync não suportado pelo Studio nesta versão.
-
-          ---
-
-          ## 7. METADADOS DE PRODUÇÃO
-
-          | Campo | Valor |
-          |---|---|
-          | location | {location} |
-          | duration | {duration}s |
-          | cast_count | {cast_count} |
-          | char1_preset | {char1_preset} |
-          | char1_action | {char1_action} |
-          | char2_preset | {char2_preset} |
-          | char2_action | {char2_action if char2_preset != "none" else "N/A"} |
-          | camera_framing | {cam_framing} |
-          | camera_angle | {cam_angle}° |
-          | music | {music} |
-          | export_format | {export_fmt} |
-          | config_file | ara-axev-scene.yml |
-
-          ### JSON completo (scene.json)
+          ### scene.json
           ```json
           {json.dumps(scene_data, indent=2, ensure_ascii=False)}
           ```
-
-          ---
-
-          ## 8. VALIDAÇÃO E QA
-
-          | Verificação | Como validar | Esperado |
-          |---|---|---|
-          | JSON válido | python3 -c "import json; json.load(open('scene.json'))" | sem erros |
-          | Duração ≤ 60s | campo `duration` | ≤ 60 |
-          | Cast ≤ 5 | len(cast) | ≤ 5 |
-          | Acções ≤ 16/char | len(beats) por actor | ≤ 16 |
-          | Staging | Check staging no Studio | sem conflitos terra/água |
-          | Posições | x/z dentro do set | ±200m máximo |
-          | Sincronização | hit reaction vs punch timing | 0.05s após disparo |
-
-          ---
-
-          ## MÍNIMO VIÁVEL PARA ABRIR NO STUDIO
-
-          - `kind: ara-studio` · `location` · `duration` · `cast` (≥1 actor com `beats`) · `shots` (≥1)
-
-          ## MÍNIMO PARA EXPORTAR VÍDEO
-
-          Todos os campos acima **mais**:
-          - Staging verificado (sem conflitos)
-          - Acções sincronizadas (hit/reaction no mesmo timestamp)
-          - Música/efeitos sonoros definidos
-          - Câmara com enquadramento adequado a cada beat
-
-          ---
           *Pipeline: ara-axev-scene.yml · Run #{run_number} · {gen_date}*
           """
 
           out = Path("axev-output/AXEV_SCENE_CATALOG.md")
           out.write_text(md, encoding="utf-8")
-          print(f"✅ Catálogo do cenário gerado: {out} ({out.stat().st_size} bytes)")
+          print(f"✅ Catálogo gerado: {out} ({out.stat().st_size} bytes)")
           PYEOF
 
-      # ─── 5. COPIAR FICHEIROS PARA OUTPUT ─────────────────────────────────
+      # ─── 5. CONFIGURAR NODE + CLONAR 3D-GEN (apenas para GLB/MP4) ────────
+      - name: Configurar Node.js 20
+        if: inputs.export_format == 'json_glb_mp4'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Clonar Ara 3D Gen
+        if: inputs.export_format == 'json_glb_mp4'
+        run: git clone --depth 1 https://github.com/olatunde85/3d-gen.git ara-3d-gen
+
+      - name: Instalar dependências
+        if: inputs.export_format == 'json_glb_mp4'
+        working-directory: ara-3d-gen
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Cache assets MakeHuman
+        if: inputs.export_format == 'json_glb_mp4'
+        id: cache-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ara-3d-gen/vendor
+            ara-3d-gen/public/assets
+          key: ara3d-assets-v1-${{ hashFiles('ara-3d-gen/scripts/setup-assets.ts', 'ara-3d-gen/scripts/mocap-takes.ts') }}
+          restore-keys: ara3d-assets-v1-
+
+      - name: Preparar assets 3D
+        if: inputs.export_format == 'json_glb_mp4'
+        working-directory: ara-3d-gen
+        run: |
+          if [ "${{ steps.cache-assets.outputs.cache-hit }}" != "true" ] || [ ! -d "vendor/sys/skins" ]; then
+            echo "A descarregar assets MakeHuman (~280 MB)..."
+            npm run setup-assets
+          else
+            echo "✅ Assets em cache."
+          fi
+
+      # ─── 6. GERAR GLB DOS PERSONAGENS ────────────────────────────────────
+      - name: Gerar GLB dos personagens da cena
+        if: inputs.export_format == 'json_glb_mp4'
+        working-directory: ara-3d-gen
+        env:
+          CHAR1_PRESET:     ${{ inputs.char1_preset }}
+          CHAR1_GENDER_AGE: ${{ inputs.char1_gender_age }}
+          CHAR1_WEAPON:     ${{ inputs.char1_weapon }}
+          CHAR2_PRESET:     ${{ inputs.char2_preset }}
+          CHAR2_GENDER_AGE: ${{ inputs.char2_gender_age }}
+          CHAR2_WEAPON:     ${{ inputs.char2_weapon }}
+        run: |
+          set -euo pipefail
+          mkdir -p out ../axev-output/glb
+
+          # ── Construir params para cada personagem e exportar GLB ──────────
+          python3 << 'PYEOF'
+          import json, os, subprocess
+          from pathlib import Path
+
+          def env(k, d=""): return os.environ.get(k, d).strip()
+
+          def build_params(preset, gender_age, weapon):
+            ga = gender_age.split(":")
+            gender_str = ga[0] if ga else "male"
+            age = int(ga[1]) if len(ga) > 1 else 25
+
+            muscle_map = {"none":0.1,"slim":0.3,"medium":0.5,"athletic":0.7,"muscular":0.85}
+            weight_map = {"very slim":0.15,"slim":0.3,"average":0.5,"heavy":0.7}
+            height_map = {"very short":0.1,"short":0.3,"average":0.5,"tall":0.7,"very tall":0.9}
+
+            params = {
+              "name": preset,
+              "detail": "medium",
+              "gender": 0.0 if gender_str == "female" else 1.0,
+              "ageYears": age,
+              "muscle": 0.5,
+              "weight": 0.5,
+              "height": 0.5,
+              "rig": "game",
+              "animations": True,
+              "restPose": "A",
+              "faceShapes": True,
+              "speechShapes": False,
+              "faceBones": True,
+            }
+            if weapon not in ("none", ""):
+              params["weapon"] = weapon
+            return params
+
+          chars = [
+            ("char1", env("CHAR1_PRESET"), env("CHAR1_GENDER_AGE"), env("CHAR1_WEAPON")),
+          ]
+          char2_preset = env("CHAR2_PRESET")
+          if char2_preset and char2_preset != "none":
+            chars.append(("char2", char2_preset, env("CHAR2_GENDER_AGE"), env("CHAR2_WEAPON")))
+
+          for char_id, preset, gender_age, weapon in chars:
+            params_path = Path(f"../axev-build/{char_id}.params.json")
+            params_path.write_text(json.dumps(build_params(preset, gender_age, weapon), indent=2))
+            print(f"✅ Params {char_id}: {preset} ({gender_age})")
+          PYEOF
+
+          # Exportar GLB para cada personagem
+          CHAR1_PRESET="${{ inputs.char1_preset }}"
+          CHAR2_PRESET="${{ inputs.char2_preset }}"
+
+          echo "▶ A exportar GLB do char1: $CHAR1_PRESET"
+          npm run export -- \
+            --params "../axev-build/char1.params.json" \
+            --formats "glb" \
+            --out "out/char1"
+
+          if [ "$CHAR2_PRESET" != "none" ]; then
+            echo "▶ A exportar GLB do char2: $CHAR2_PRESET"
+            npm run export -- \
+              --params "../axev-build/char2.params.json" \
+              --formats "glb" \
+              --out "out/char2"
+          fi
+
+          # Copiar GLBs para output
+          find out -name "*.glb" | while read f; do
+            char=$(echo "$f" | grep -oP 'char[12]')
+            cp "$f" "../axev-output/glb/AXEV_${char^^}.glb"
+            SIZE=$(stat -c%s "$f")
+            echo "✅ GLB exportado: AXEV_${char^^}.glb ($(( SIZE / 1024 )) KB)"
+          done
+
+      # ─── 7. GERAR MP4 DA CENA (Chromium headless + studio.exportMovie) ───
+      - name: Instalar Chromium
+        if: inputs.export_format == 'json_glb_mp4'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            chromium-browser \
+            xvfb \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libasound2
+          echo "CHROME=$(which chromium-browser || which chromium)" >> $GITHUB_ENV
+          echo "✅ Chromium: $(chromium-browser --version 2>/dev/null || chromium --version)"
+
+      - name: Build Ara Studio (dist)
+        if: inputs.export_format == 'json_glb_mp4'
+        working-directory: ara-3d-gen
+        run: |
+          npm run build -- --logLevel error
+          echo "✅ Build concluído: $(du -sh dist | cut -f1)"
+
+      - name: Exportar MP4 da cena via Chromium headless
+        if: inputs.export_format == 'json_glb_mp4'
+        working-directory: ara-3d-gen
+        env:
+          SCENE_JSON_PATH: ${{ github.workspace }}/axev-build/scene.json
+          OUTPUT_PATH:     ${{ github.workspace }}/axev-output
+          SCENE_ID:        ${{ inputs.scene_id }}
+          MP4_RESOLUTION:  ${{ inputs.mp4_resolution }}
+          CHROME:          ${{ env.CHROME }}
+        run: |
+          cat > export-scene-mp4.ts << 'TSEOF'
+          import { spawn } from 'node:child_process';
+          import { mkdirSync, readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+          import { createServer } from 'node:http';
+          import { tmpdir } from 'node:os';
+          import { extname, join, normalize } from 'node:path';
+          import type { Readable, Writable } from 'node:stream';
+
+          const CHROME = process.env.CHROME ?? '';
+          const SCENE_JSON_PATH = process.env.SCENE_JSON_PATH ?? '';
+          const OUTPUT_PATH = process.env.OUTPUT_PATH ?? '';
+          const SCENE_ID = process.env.SCENE_ID ?? 'scene';
+          const RESOLUTION = parseInt(process.env.MP4_RESOLUTION ?? '720', 10);
+          const DIST = join(import.meta.dirname, '../dist');
+
+          if (!CHROME || !existsSync(CHROME)) throw new Error(`Chrome não encontrado: ${CHROME}`);
+          if (!existsSync(SCENE_JSON_PATH)) throw new Error(`scene.json não encontrado: ${SCENE_JSON_PATH}`);
+
+          const sceneProject = JSON.parse(readFileSync(SCENE_JSON_PATH, 'utf8'));
+          mkdirSync(OUTPUT_PATH, { recursive: true });
+
+          // Dimensões por resolução
+          const DIMS: Record<number, [number, number]> = {
+            480:  [854,  480],
+            720:  [1280, 720],
+            1080: [1920, 1080],
+          };
+          const [width, height] = DIMS[RESOLUTION] ?? [1280, 720];
+          console.log(`▶ Resolução: ${width}×${height} (${RESOLUTION}p)`);
+
+          // Servidor HTTP local para servir o dist
+          const TYPES: Record<string, string> = {
+            '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+            '.json': 'application/json', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+            '.png': 'image/png', '.jpg': 'image/jpeg', '.pack': 'application/octet-stream',
+            '.txt': 'text/plain', '.webmanifest': 'application/manifest+json',
+            '.mp3': 'audio/mpeg', '.wasm': 'application/wasm', '.mjs': 'text/javascript',
+          };
+          const server = createServer((req, res) => {
+            let path = normalize(join(DIST, decodeURIComponent((req.url ?? '/').split('?')[0])));
+            if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
+            if (!path.startsWith(DIST) || !existsSync(path)) { res.statusCode = 404; res.end(); return; }
+            res.setHeader('Content-Type', TYPES[extname(path)] ?? 'application/octet-stream');
+            res.end(readFileSync(path));
+          });
+          await new Promise<void>((r) => server.listen(4422, r));
+          console.log('✅ Servidor HTTP iniciado em :4422');
+
+          // Iniciar Chromium com DevTools pipe
+          const profile = mkdtempSync(join(tmpdir(), 'axev-mp4-'));
+          const chrome = spawn(CHROME, [
+            '--headless=new',
+            '--use-angle=swiftshader',
+            '--enable-unsafe-swiftshader',
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            '--autoplay-policy=no-user-gesture-required',
+            '--no-first-run',
+            '--disable-gpu-sandbox',
+            '--no-sandbox',
+            `--user-data-dir=${profile}`,
+            '--remote-debugging-pipe',
+            `--window-size=${width},${height}`,
+            'about:blank',
+          ], { stdio: ['ignore', 'inherit', 'inherit', 'pipe', 'pipe'] });
+
+          const toChrome = chrome.stdio[3] as Writable;
+          const fromChrome = chrome.stdio[4] as Readable;
+
+          const cleanup = async () => {
+            const exited = chrome.exitCode !== null
+              ? Promise.resolve()
+              : new Promise<void>((r) => chrome.once('exit', () => r()));
+            chrome.kill();
+            server.close();
+            await exited;
+            rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+          };
+
+          let nextId = 0, session: string | undefined, buf = '';
+          const pending = new Map<number, (m: { result?: unknown; error?: { message: string } }) => void>();
+          const errors: string[] = [];
+
+          fromChrome.on('data', (c: Buffer) => {
+            buf += c.toString('utf8');
+            let i;
+            while ((i = buf.indexOf('\0')) >= 0) {
+              const m = JSON.parse(buf.slice(0, i));
+              buf = buf.slice(i + 1);
+              if (m.id !== undefined) pending.get(m.id)?.(m);
+              else if (m.method === 'Runtime.exceptionThrown')
+                errors.push(m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text);
+            }
+          });
+
+          function send<T = Record<string, unknown>>(method: string, params: object = {}, withSession = true): Promise<T> {
+            const id = ++nextId;
+            return new Promise((resolve, reject) => {
+              pending.set(id, (m) => (m.error ? reject(new Error(`${method}: ${m.error.message}`)) : resolve(m.result as T)));
+              toChrome.write(JSON.stringify({ id, method, params, ...(withSession && session ? { sessionId: session } : {}) }) + '\0');
+            });
+          }
+
+          async function evaluate<T>(js: string): Promise<T> {
+            const r = await send<{ result: { value: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }>(
+              'Runtime.evaluate', { expression: js, returnByValue: true, awaitPromise: true }
+            );
+            if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+            return r.result.value;
+          }
+
+          async function waitFor(js: string, what: string, ms = 180000): Promise<void> {
+            const end = Date.now() + ms;
+            while (Date.now() < end) {
+              if (await evaluate<boolean>(js).catch(() => false)) return;
+              await new Promise((r) => setTimeout(r, 500));
+            }
+            throw new Error(`Timeout a aguardar: ${what}`);
+          }
+
+          const pause = (ms = 300) => new Promise((r) => setTimeout(r, ms));
+
+          try {
+            const { targetId } = await send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' }, false);
+            ({ sessionId: session } = await send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true }, false));
+            await send('Runtime.enable');
+            await send('Page.enable');
+            await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+
+            // Suprimir tour no Studio
+            await send('Page.addScriptToEvaluateOnNewDocument', { source: `try{localStorage.setItem('ara.studio.tour.v1','1')}catch{}` });
+
+            console.log('▶ A navegar para o Studio...');
+            await send('Page.navigate', { url: 'http://localhost:4422/studio/#demo' });
+            await waitFor('window.studio?.ready', 'Studio carregado', 180000);
+            console.log('✅ Studio pronto.');
+
+            // Carregar a cena gerada
+            const projectJSON = JSON.stringify(sceneProject);
+            await evaluate(`(async () => {
+              const project = ${projectJSON};
+              await window.studio.setProject(project);
+            })()`);
+            await waitFor('window.studio?.ready', 'Cena carregada', 60000);
+            console.log('✅ Cena carregada no Studio.');
+            await pause(1000);
+
+            // Exportar MP4
+            console.log(`▶ A exportar MP4 ${width}×${height}...`);
+            const movieBase64 = await evaluate<string>(`(async () => {
+              const scene = window.studio.scene;
+              const project = window.studio.project;
+              const blob = await window.studio.exportMovie(scene, project, {
+                width: ${width},
+                height: ${height},
+                signal: new AbortController().signal,
+                progress: (p) => { if (Math.round(p * 100) % 10 === 0) console.log('Export:', Math.round(p * 100) + '%'); }
+              });
+              return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+              });
+            })()`);
+
+            if (!movieBase64 || !movieBase64.startsWith('data:video/')) {
+              throw new Error('exportMovie não devolveu um vídeo válido');
+            }
+
+            const mp4Data = Buffer.from(movieBase64.split(',')[1], 'base64');
+            const outPath = join(OUTPUT_PATH, `AXEV_SCENE_${SCENE_ID}.mp4`);
+            writeFileSync(outPath, mp4Data);
+            console.log(`✅ MP4 exportado: ${outPath} (${Math.round(mp4Data.length / 1024)} KB)`);
+
+            if (errors.length) {
+              console.warn('⚠️ Erros de browser:', errors.join('\n'));
+            }
+          } catch (err) {
+            console.error('❌ Erro ao exportar MP4:', err);
+            await cleanup();
+            process.exit(1);
+          }
+
+          await cleanup();
+          console.log('✅ Exportação MP4 concluída.');
+          TSEOF
+
+          npx tsx export-scene-mp4.ts
+          echo "✅ Script de exportação MP4 concluído."
+
+      # ─── 8. PREPARAR OUTPUT FINAL ─────────────────────────────────────────
       - name: Preparar output
         run: |
           mkdir -p axev-output
@@ -803,24 +1024,20 @@ jobs:
           | Personagem 2 | ${{ inputs.char2_preset }} |
           | Câmara | ${{ inputs.camera_framing }} · ${{ inputs.camera_angle }}° |
           | Música | ${{ inputs.music }} |
+          | Export | ${{ inputs.export_format }} |
 
-          ## Como usar
-          1. Abre **Ara Studio** em [ara3dgen.com/studio](https://ara3dgen.com/studio/)
-          2. Clica em **Assist → Open JSON**
-          3. Cola ou carrega o ficheiro **AXEV_SCENE.json**
-          4. Clica **Build film**
-          5. Ajusta staging, câmara e timing no Studio
-          6. Exporta MP4 (720p ou 1080p)
-
-          ## Ficheiros
-          - 🎬 [Cena JSON](./AXEV_SCENE.json) — abre directamente no Ara Studio
-          - 📄 [Catálogo do Cenário](./AXEV_SCENE_CATALOG.md)
+          ## Ficheiros produzidos
+          - 🎬 \`AXEV_SCENE.json\` — abre directamente no Ara Studio
+          - 📄 \`AXEV_SCENE_CATALOG.md\` — catálogo completo
+          $([ "${{ inputs.export_format }}" = "json_glb_mp4" ] && echo "- 🧊 \`glb/AXEV_CHAR1.glb\` — modelo 3D personagem 1" || true)
+          $([ "${{ inputs.export_format }}" = "json_glb_mp4" ] && [ "${{ inputs.char2_preset }}" != "none" ] && echo "- 🧊 \`glb/AXEV_CHAR2.glb\` — modelo 3D personagem 2" || true)
+          $([ "${{ inputs.export_format }}" = "json_glb_mp4" ] && echo "- 🎥 \`AXEV_SCENE_${{ inputs.scene_id }}.mp4\` — vídeo ${{ inputs.mp4_resolution }}p" || true)
 
           ---
           *Gerado por AXEV 3D Studio — ara-axev-scene.yml*
           EOF
 
-      # ─── 6. PUBLICAR ARTEFACTO ───────────────────────────────────────────
+      # ─── 9. PUBLICAR ARTEFACTO ───────────────────────────────────────────
       - name: Publicar artefacto
         uses: actions/upload-artifact@v4
         with:
