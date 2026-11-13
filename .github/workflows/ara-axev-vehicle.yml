@@ -311,24 +311,17 @@ jobs:
 
           preset_name = env("INPUT_RIDER_PRESET", "Athletic man")
 
-          # params para o export-cli.ts
-          # NOTA IMPORTANTE:
-          #   - vehicle: "none" → o motor NÃO gera o prop do veículo como ficheiro separado
-          #     → isso evita o zip e gera um GLB único do rider com as animações de condução
-          #   - vehicleStyle: guardamos para metadados, mas não passamos ao motor aqui
-          #   - animations: True + rig: "game" → GLB com animações embedded
-          #   - faceShapes/speechShapes: False → remove morph targets → ficheiro menor e sem zip
           params_for_cli = {
             "name": preset_name,
             "detail": env("INPUT_QUALITY", "high").lower(),
-            "vehicle": "none",        # não gerar prop separado → evita zip
+            "vehicle": "none",
             "animations": True,
             "rig": "game",
             "restPose": "A",
             "faceShapes": False,
             "speechShapes": False,
-            "stageProps": False,      # sem props de palco → evita ficheiros extra
-            "vehicleFile": False,     # explicitamente desligar prop do veículo
+            "stageProps": False,
+            "vehicleFile": False,
           }
 
           if with_rider:
@@ -363,7 +356,6 @@ jobs:
           PYEOF
 
       # ─── 8. GERAR VEÍCULO ────────────────────────────────────────────────
-      # export-cli.ts com vehicle:none + vehicleFile:false → GLB único (sem zip)
       - name: Gerar veículo com Ara 3D Gen
         working-directory: ara-3d-gen
         env:
@@ -485,11 +477,14 @@ jobs:
             exit 1
           fi
           echo "✅ Ficheiros exportados:"
-          find "$OUT" -type f | sort | while read f; do
+          while IFS= read -r f; do
             SIZE=$(stat -c%s "$f")
-            echo "  $f ($(( SIZE / 1024 )) KB)"
-            [ "$SIZE" -lt 100 ] && echo "::warning::Ficheiro suspeito muito pequeno: $f"
-          done
+            SIZE_KB=$(( SIZE / 1024 ))
+            echo "  $f (${SIZE_KB} KB)"
+            if [ "$SIZE" -lt 100 ]; then
+              echo "::warning::Ficheiro suspeito muito pequeno: $f"
+            fi
+          done < <(find "$OUT" -type f | sort)
 
       # ─── 11. ARTEFACTO ───────────────────────────────────────────────────
       - name: Criar relatório e publicar artefacto
