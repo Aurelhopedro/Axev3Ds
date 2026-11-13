@@ -716,10 +716,6 @@ jobs:
             gender_str = ga[0] if ga else "male"
             age = int(ga[1]) if len(ga) > 1 else 25
 
-            muscle_map = {"none":0.1,"slim":0.3,"medium":0.5,"athletic":0.7,"muscular":0.85}
-            weight_map = {"very slim":0.15,"slim":0.3,"average":0.5,"heavy":0.7}
-            height_map = {"very short":0.1,"short":0.3,"average":0.5,"tall":0.7,"very tall":0.9}
-
             params = {
               "name": preset,
               "detail": "medium",
@@ -778,19 +774,11 @@ jobs:
             echo "✅ GLB exportado: AXEV_${char^^}.glb ($(( SIZE / 1024 )) KB)"
           done
 
-      # ─── 7. GERAR MP4 DA CENA (Chromium headless + studio.exportMovie) ───
+      # ─── 7. INSTALAR CHROMIUM + GERAR MP4 ────────────────────────────────
       - name: Instalar Chromium
         if: inputs.export_format == 'json_glb_mp4'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            chromium-browser \
-            xvfb \
-            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
-            libxfixes3 libxrandr2 libgbm1 libasound2
-          echo "CHROME=$(which chromium-browser || which chromium)" >> $GITHUB_ENV
-          echo "✅ Chromium: $(chromium-browser --version 2>/dev/null || chromium --version)"
+        working-directory: ara-3d-gen
+        run: npx playwright install chromium --with-deps
 
       - name: Build Ara Studio (dist)
         if: inputs.export_format == 'json_glb_mp4'
@@ -807,7 +795,6 @@ jobs:
           OUTPUT_PATH:     ${{ github.workspace }}/axev-output
           SCENE_ID:        ${{ inputs.scene_id }}
           MP4_RESOLUTION:  ${{ inputs.mp4_resolution }}
-          CHROME:          ${{ env.CHROME }}
         run: |
           cat > export-scene-mp4.ts << 'TSEOF'
           import { spawn } from 'node:child_process';
@@ -817,12 +804,15 @@ jobs:
           import { extname, join, normalize } from 'node:path';
           import type { Readable, Writable } from 'node:stream';
 
-          const CHROME = process.env.CHROME ?? '';
           const SCENE_JSON_PATH = process.env.SCENE_JSON_PATH ?? '';
           const OUTPUT_PATH = process.env.OUTPUT_PATH ?? '';
           const SCENE_ID = process.env.SCENE_ID ?? 'scene';
           const RESOLUTION = parseInt(process.env.MP4_RESOLUTION ?? '720', 10);
           const DIST = join(import.meta.dirname, '../dist');
+
+          // Localizar Chromium instalado pelo Playwright
+          const { execSync } = await import('node:child_process');
+          const CHROME = execSync('npx playwright show-browser-path chromium 2>/dev/null || which chromium || which chromium-browser').toString().trim();
 
           if (!CHROME || !existsSync(CHROME)) throw new Error(`Chrome não encontrado: ${CHROME}`);
           if (!existsSync(SCENE_JSON_PATH)) throw new Error(`scene.json não encontrado: ${SCENE_JSON_PATH}`);
@@ -830,7 +820,6 @@ jobs:
           const sceneProject = JSON.parse(readFileSync(SCENE_JSON_PATH, 'utf8'));
           mkdirSync(OUTPUT_PATH, { recursive: true });
 
-          // Dimensões por resolução
           const DIMS: Record<number, [number, number]> = {
             480:  [854,  480],
             720:  [1280, 720],
@@ -839,7 +828,6 @@ jobs:
           const [width, height] = DIMS[RESOLUTION] ?? [1280, 720];
           console.log(`▶ Resolução: ${width}×${height} (${RESOLUTION}p)`);
 
-          // Servidor HTTP local para servir o dist
           const TYPES: Record<string, string> = {
             '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
             '.json': 'application/json', '.svg': 'image/svg+xml', '.webp': 'image/webp',
@@ -857,7 +845,6 @@ jobs:
           await new Promise<void>((r) => server.listen(4422, r));
           console.log('✅ Servidor HTTP iniciado em :4422');
 
-          // Iniciar Chromium com DevTools pipe
           const profile = mkdtempSync(join(tmpdir(), 'axev-mp4-'));
           const chrome = spawn(CHROME, [
             '--headless=new',
@@ -937,8 +924,6 @@ jobs:
             await send('Runtime.enable');
             await send('Page.enable');
             await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-
-            // Suprimir tour no Studio
             await send('Page.addScriptToEvaluateOnNewDocument', { source: `try{localStorage.setItem('ara.studio.tour.v1','1')}catch{}` });
 
             console.log('▶ A navegar para o Studio...');
@@ -946,7 +931,6 @@ jobs:
             await waitFor('window.studio?.ready', 'Studio carregado', 180000);
             console.log('✅ Studio pronto.');
 
-            // Carregar a cena gerada
             const projectJSON = JSON.stringify(sceneProject);
             await evaluate(`(async () => {
               const project = ${projectJSON};
@@ -956,7 +940,6 @@ jobs:
             console.log('✅ Cena carregada no Studio.');
             await pause(1000);
 
-            // Exportar MP4
             console.log(`▶ A exportar MP4 ${width}×${height}...`);
             const movieBase64 = await evaluate<string>(`(async () => {
               const scene = window.studio.scene;
@@ -983,9 +966,7 @@ jobs:
             writeFileSync(outPath, mp4Data);
             console.log(`✅ MP4 exportado: ${outPath} (${Math.round(mp4Data.length / 1024)} KB)`);
 
-            if (errors.length) {
-              console.warn('⚠️ Erros de browser:', errors.join('\n'));
-            }
+            if (errors.length) console.warn('⚠️ Erros de browser:', errors.join('\n'));
           } catch (err) {
             console.error('❌ Erro ao exportar MP4:', err);
             await cleanup();
