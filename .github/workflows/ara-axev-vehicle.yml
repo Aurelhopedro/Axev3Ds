@@ -253,10 +253,6 @@ jobs:
       # ─── 7. CONSTRUIR PARÂMETROS DO RIDER ────────────────────────────────
       - name: Construir parâmetros do rider
         env:
-          INPUT_VEHICLE_TYPE:     ${{ inputs.vehicle_type }}
-          INPUT_COLOR:            ${{ inputs.color }}
-          INPUT_FINISH:           ${{ inputs.finish }}
-          INPUT_VARIANT:          ${{ inputs.variant }}
           INPUT_WITH_RIDER:       ${{ inputs.with_rider }}
           INPUT_RIDER_PRESET:     ${{ inputs.rider_preset }}
           INPUT_RIDER_GENDER_AGE: ${{ inputs.rider_gender_age }}
@@ -303,12 +299,12 @@ jobs:
       - name: Gerar veículo com Ara 3D Gen
         working-directory: ara-3d-gen
         env:
-          FORMATS_NORM:     ${{ env.FORMATS_NORM }}
-          VEHICLE_TYPE:     ${{ inputs.vehicle_type }}
-          VEHICLE_COLOR:    ${{ inputs.color }}
-          VEHICLE_FINISH:   ${{ inputs.finish }}
-          VEHICLE_VARIANT:  ${{ inputs.variant }}
-          WITH_RIDER:       ${{ inputs.with_rider }}
+          FORMATS_NORM:    ${{ env.FORMATS_NORM }}
+          VEHICLE_TYPE:    ${{ inputs.vehicle_type }}
+          VEHICLE_COLOR:   ${{ inputs.color }}
+          VEHICLE_FINISH:  ${{ inputs.finish }}
+          VEHICLE_VARIANT: ${{ inputs.variant }}
+          WITH_RIDER:      ${{ inputs.with_rider }}
         run: |
           set -euo pipefail
           mkdir -p out/vehicles
@@ -316,14 +312,14 @@ jobs:
           echo "▶ A gerar veículo '${VEHICLE_TYPE}' | cor: ${VEHICLE_COLOR} | formatos: ${FORMATS_NORM}"
 
           npx tsx ../ara-vehicle-export-cli.ts \
-            --vehicle   "$VEHICLE_TYPE" \
-            --color     "$VEHICLE_COLOR" \
-            --finish    "$VEHICLE_FINISH" \
-            --variant   "$VEHICLE_VARIANT" \
+            --vehicle    "$VEHICLE_TYPE" \
+            --color      "$VEHICLE_COLOR" \
+            --finish     "$VEHICLE_FINISH" \
+            --variant    "$VEHICLE_VARIANT" \
             --with-rider "$WITH_RIDER" \
             --rider-params ../axev-build/rider.params.json \
-            --formats   "$FORMATS_NORM" \
-            --out       out/vehicles \
+            --formats    "$FORMATS_NORM" \
+            --out        out/vehicles \
             2>&1 | tee ../axev-build/engine_output.log
 
           echo ""
@@ -372,7 +368,7 @@ jobs:
           set -euo pipefail
           mkdir -p axev-output
           python3 << 'PYEOF'
-          import os, json, re
+          import os, json
           from pathlib import Path
           from datetime import datetime, timezone
 
@@ -385,8 +381,6 @@ jobs:
           clips = env("CLIPS"); quality = env("QUALITY"); formats = env("FORMATS_NORM")
           run_number = env("RUN_NUMBER"); repo = env("REPO")
           gen_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-          engine_log = Path("axev-build/engine_output.log").read_text() if Path("axev-build/engine_output.log").exists() else ""
 
           out_dir = Path("ara-3d-gen/out/vehicles")
           files_info = []; total_mb = 0.0
@@ -431,7 +425,7 @@ jobs:
           PYEOF
 
       # ─── 11. PUBLICAR ARTEFACTO ──────────────────────────────────────────
-      - name: Publicar artefacto
+      - name: Preparar e publicar artefacto
         run: |
           mkdir -p axev-output/exports
           cp -r ara-3d-gen/out/vehicles/. axev-output/exports/ 2>/dev/null || true
