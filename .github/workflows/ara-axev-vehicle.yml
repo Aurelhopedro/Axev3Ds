@@ -161,7 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! echo "$INPUT_VEHICLE_ID" | grep -qE '^[a-zA-Z0-9_\-]{1,80}$'; then
-            echo "::error::vehicle_id inválido: '$INPUT_VEHICLE_ID'"
+            echo "::error::vehicle_id inválido"
             exit 1
           fi
           if ! echo "$INPUT_COLOR" | grep -qE '^#[0-9a-fA-F]{6}$'; then
@@ -215,40 +215,21 @@ jobs:
           INPUT_QUALITY: ${{ inputs.quality }}
         run: |
           mkdir -p axev-build
-          WITH_RIDER="$INPUT_WITH_RIDER"
-          PRESET="$INPUT_RIDER_PRESET"
-          GA="$INPUT_RIDER_GENDER_AGE"
-          QUALITY="$INPUT_QUALITY"
-          GENDER=$(echo "$GA" | cut -d: -f1)
-          AGE=$(echo "$GA" | cut -d: -f2)
+          GENDER=$(echo "$INPUT_RIDER_GENDER_AGE" | cut -d: -f1)
+          AGE=$(echo "$INPUT_RIDER_GENDER_AGE" | cut -d: -f2)
           if [ "$GENDER" = "female" ]; then
             GENDER_VAL="0.0"
           else
             GENDER_VAL="1.0"
           fi
-          AGE_VAL=$(python3 -c "
-          y = max(12, min(90, int('$AGE')))
-          v = round(0.5 + ((y-25)/65)*0.5 if y >= 25 else 0.5, 4)
-          print(v)
-          ")
+          AGE_VAL=$(python3 -c "y=max(12,min(90,int('$AGE')));print(round(0.5+((y-25)/65)*0.5 if y>=25 else 0.5,4))")
           cat > axev-build/rider.params.json << JSONEOF
-          {
-            "name": "$PRESET",
-            "detail": "$QUALITY",
-            "animations": true,
-            "rig": "game",
-            "restPose": "A",
-            "faceShapes": false,
-            "speechShapes": false,
-            "stageProps": false,
-            "gender": $GENDER_VAL,
-            "age": $AGE_VAL
-          }
+          {"name":"$INPUT_RIDER_PRESET","detail":"$INPUT_QUALITY","animations":true,"rig":"game","restPose":"A","faceShapes":false,"speechShapes":false,"stageProps":false,"gender":$GENDER_VAL,"age":$AGE_VAL}
           JSONEOF
-          echo "Parâmetros do rider gerados."
+          echo "Parâmetros do rider gerados:"
           cat axev-build/rider.params.json
 
-      - name: Gerar veículo com Ara 3D Gen
+      - name: Copiar script de export para motor e gerar veículo
         working-directory: ara-3d-gen
         env:
           FORMATS_NORM: ${{ env.FORMATS_NORM }}
@@ -260,8 +241,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out/vehicles
+          # Copiar script para dentro do motor (herda "type":"module" do package.json do motor)
+          cp ../ara-vehicle-export-cli.ts scripts/ara-vehicle-export-cli.ts
           echo "A gerar veículo: $VEHICLE_TYPE | cor: $VEHICLE_COLOR | formatos: $FORMATS_NORM"
-          npx tsx ../ara-vehicle-export-cli.ts \
+          npx tsx scripts/ara-vehicle-export-cli.ts \
             --vehicle "$VEHICLE_TYPE" \
             --color "$VEHICLE_COLOR" \
             --finish "$VEHICLE_FINISH" \
@@ -293,7 +276,7 @@ jobs:
             fi
           done < <(find "$OUT" -type f | sort)
 
-      - name: Preparar e publicar artefacto
+      - name: Preparar artefacto
         run: |
           mkdir -p axev-output/exports
           cp -r ara-3d-gen/out/vehicles/. axev-output/exports/ 2>/dev/null || true
