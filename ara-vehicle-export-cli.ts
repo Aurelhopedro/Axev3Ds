@@ -1,27 +1,28 @@
 /**
  * Headless vehicle export — gera o veículo 3D e (opcionalmente) o rider.
+ * Este script deve ser executado a partir da pasta scripts/ do motor ara-3d-gen.
  *
  * Uso:
- *   npx tsx ara-vehicle-export-cli.ts \
+ *   npx tsx scripts/ara-vehicle-export-cli.ts \
  *     --vehicle sports_car \
  *     --color "#c0392b" --finish gloss --variant standard \
- *     --rider-params rider.params.json \
+ *     --rider-params ../axev-build/rider.params.json \
  *     --with-rider yes \
  *     --formats glb \
  *     --out out/vehicles
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildHuman } from './src/core/human';
-import { DEFAULT_PARAMS } from './src/core/params';
-import { Animator } from './src/core/anim/evaluate';
-import { clipById } from './src/core/anim/clips';
-import { Vehicle } from './src/core/props/vehicle';
-import { VEHICLE_CLIP, DEFAULT_VEHICLE_STYLE } from './src/core/props/vehicles';
-import { exportGLB } from './src/export/glb';
-import { exportFBX } from './src/export/fbx';
-import { exportCharacter } from './src/export';
-import { nodeLibrary } from './scripts/node-assets';
+import { buildHuman } from '../src/core/human';
+import { DEFAULT_PARAMS } from '../src/core/params';
+import { Animator } from '../src/core/anim/evaluate';
+import { clipById } from '../src/core/anim/clips';
+import { Vehicle } from '../src/core/props/vehicle';
+import { VEHICLE_CLIP, DEFAULT_VEHICLE_STYLE } from '../src/core/props/vehicles';
+import { exportGLB } from '../src/export/glb';
+import { exportFBX } from '../src/export/fbx';
+import { exportCharacter } from '../src/export';
+import { nodeLibrary } from './node-assets';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -57,7 +58,7 @@ const riderParamsFull = { ...DEFAULT_PARAMS, detail: 'high', rig: 'game', animat
 const ch = await buildHuman(lib, riderParamsFull);
 
 // ── animação de condução ──────────────────────────────────────────────────────
-const clipId  = VEHICLE_CLIP[vehicleId as keyof typeof VEHICLE_CLIP];
+const clipId = VEHICLE_CLIP[vehicleId as keyof typeof VEHICLE_CLIP];
 if (!clipId) {
   console.error(`Veículo desconhecido: "${vehicleId}". Disponíveis: ${Object.keys(VEHICLE_CLIP).join(', ')}`);
   process.exit(1);
@@ -90,7 +91,7 @@ for (const fmt of formatsRaw) {
     const vehicleFile = join(outDir, `${vehicleId}.${fmtClean}`);
     writeFileSync(vehicleFile, buffer);
     const kb = Math.round(buffer.length / 1024);
-    console.log(`✅ Veículo: ${vehicleFile} (${kb} KB)`);
+    console.log(`Veículo: ${vehicleFile} (${kb} KB)`);
     writtenFiles.push(vehicleFile);
 
     // ── rider ──
@@ -99,15 +100,13 @@ for (const fmt of formatsRaw) {
       const riderPath = join(outDir, riderFile.name);
       writeFileSync(riderPath, riderFile.data);
       const rkb = Math.round(riderFile.data.length / 1024);
-      console.log(`✅ Rider:   ${riderPath} (${rkb} KB)`);
+      console.log(`Rider:   ${riderPath} (${rkb} KB)`);
       writtenFiles.push(riderPath);
     }
   } else {
-    console.warn(`⚠️  Formato não suportado para veículos: ${fmtClean} (use glb ou fbx)`);
+    console.warn(`Formato não suportado para veículos: ${fmtClean} (use glb ou fbx)`);
   }
 }
 
 vehicle.dispose();
-
-console.log('');
-console.log(`📦 Total: ${writtenFiles.length} ficheiro(s) gerado(s) em ${outDir}`);
+console.log(`Total: ${writtenFiles.length} ficheiro(s) gerado(s) em ${outDir}`);
